@@ -32,3 +32,6 @@ where:
 - It is mandatory to upload it in "materiale" section of "portale della didattica" at least 168 hours before the exam call.
 - For well commented codes, I can't ensure a higher mark but they would be very welcome.
 - In case you face any issue or you have any doubt text me at the email giuseppe.esposito@polito.it and professor Squillero giovanni.squillero@polito.it.
+
+# Note personali
+quando beta < la baseline la batto, concentrarsi quando il peso è esponenziale invece e quindi conviene portare carichi bassi, se divido il peso dovrei batterla
