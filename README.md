@@ -37,3 +37,6 @@ where:
 quando beta < la baseline la batto, concentrarsi quando il peso è esponenziale invece e quindi conviene portare carichi bassi, se divido il peso dovrei batterla
 
 AGGIUNGERE alla popolazione la baseline male che vada seleziona quella 
+
+ultima condizione da ottimizzare: quando beta=1 e alpha<1 -> partire dalla baseline e unire ogni tour possibile fino a quando non smette di migliorare
+
