@@ -114,17 +114,6 @@ Parameters are dynamically adjusted based on `beta` and `n_cities` to balance so
 - For such cases, smaller populations are used to remain tractable.
 - When `beta` is small, larger populations provide better exploration.
 
-```python
-if beta >= 2:
-    population_size = min(max(1, n_cities // beta), 200)
-    generations = population_size * 2
-    offprint = int(population_size * 0.2)
-else:
-    population_size = min(n_cities, 200)
-    generations = population_size * 2
-    offprint = int(population_size * 0.5)
-```
-
 
 **Configurable parameters:**
 - `pop_size`: Population size
@@ -136,3 +125,5 @@ Optionally, a boolean flag can be passed to `solution()` to enable **stagnation 
 The algorithm balances exploration (through mutation/crossover diversity) and exploitation (through greedy decoding and local optimization) to find high-quality solutions across different problem configurations. 
 
 
+### Collaboration
+In order to produce this solution I share ideas with 3 collegues: Davide Carletto (s339425),  Michele Carena (349483), Alessandro Benvenuti (343748)
