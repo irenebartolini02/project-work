@@ -9,6 +9,6 @@ def solution(p:Problem):
 
     solver = GA_Solver(p, pop_size=population_size, generations=generations, offprint=offprint)
     # set fast to True for a quicker solution, it enable starvation control in GA
-    _ , best_cost = solver.solution(fast=False)
+    best_path , best_cost = solver.solution(fast=False)
 
-    return best_cost
+    return best_path
