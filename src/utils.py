@@ -5,11 +5,6 @@ def compute_ga_params(n_cities, beta, alpha):
     """Dynamically compute GA parameters based on problem complexity."""
     
     if n_cities <= 50:
-        if beta >= 2:
-            pop_size = min(20, n_cities)
-            generations = 50
-            offprint = int(pop_size * 0.3)
-        else:
             pop_size = n_cities
             generations = 100
             offprint = int(pop_size * 0.6)
@@ -35,27 +30,23 @@ def compute_ga_params(n_cities, beta, alpha):
             offprint = int(pop_size * (0.25 if beta >= 2 else 0.4))
     
     else:  # n_cities > 200 (e.g., 1000)
-        if beta >= 2:
+        if beta >= 2 :
             # High beta (>2): VERY expensive initialization, minimal population
-            base_pop = max(10, int(40 - 5 * (beta - 2)))  # Decreases with beta
-            pop_size = max(10, int(base_pop / (1 + 0.05 * alpha)))
-            # Further reduce population for very large problem sizes with high beta
-            size_factor = 1 + max(0, (n_cities - 200) / 500)  # Progressive reduction
-            pop_size = max(5, int(pop_size / size_factor))
-            generations = max(20, int(40 - 5 * beta))
-            offprint = max(2, int(pop_size * 0.1))
+            pop_size = 3
+            generations = 10
+            offprint = 2
+            # tanto restituiamo greedy
         else:
             # Lower beta: can afford more exploration
-            base_pop = min(80, int(200 / np.sqrt(n_cities / 100)))
-            pop_size = min(base_pop + 20, int(80 - 10 * beta))
-            generations = int(80 - 5 * beta)
+            pop_size = min(30, int(100 / np.sqrt(n_cities / 100)))
+            generations = int(40 - 5 * beta)
             offprint = max(8, int(pop_size * 0.3))
     
     # Safety bounds
-    pop_size = max(10, min(pop_size, 150))
-    generations = max(20, min(generations, 200))
+    pop_size = max(3, min(pop_size, 150))
+    generations = max(10, min(generations, 200))
     offprint = max(2, int(offprint))
-    
+    #print(f"GA Params: pop_size={pop_size}, generations={generations}, offprint={offprint}")
     return pop_size, generations, offprint
 
 
