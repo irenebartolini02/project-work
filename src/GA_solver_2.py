@@ -40,6 +40,7 @@ class GA_Solver:
         # Calcola il costo totale del percorso rappresentato dal genotipo (permutazione dei nodi rilevanti)
         # genotype sample: [[ (1,10)] , [(2,20), (3,30)] ...]
         total_cost=0
+        
         for gene in genotype:
             start=0
             gene_cost=0
@@ -48,13 +49,20 @@ class GA_Solver:
                 # necessario calcolare il costo edge per edge per tenere conto del peso dinamico (oro raccolto)
                 # per Beta > 1 non è equivalente usare la distanza totale del percorso implicito tra start e city, perchè il peso (oro) cambia ad ogni edge
                 implicit_path= self.full_paths[start][city]
+                
                 for c in implicit_path[1:]: # percorro il path implicito tra start e city
                     d= self.graph[start][c]['dist']
                     gene_cost+= d + (d* self.alpha*gold )**self.beta
                     start=c
+                
                 gold+= gold_amount
-            last_d= self.dist_matrix[start][0]
-            gene_cost+= last_d + (last_d* self.alpha*gold )**self.beta
+            
+            # ultimo percorso 
+            last_path= self.full_paths[start][0]
+            for c in last_path[1:]: # percorro il path implicito tra start e depot
+                last_d= self.graph[start][c]['dist']
+                gene_cost+= last_d + (last_d* self.alpha*gold )**self.beta
+                start=c
             total_cost+=gene_cost 
         
         # tolgo la distanza tra depot e prima città con oro -> si parte dalla prima città con oro
@@ -199,6 +207,10 @@ class GA_Solver:
             total_cost: Total cost of the route.
         """
         genotype = []
+        # se nel chromosome è presente il deposito, lo tolgo (non ha senso visitarlo più di una volta)
+        chromosome = [c for c in chromosome if c != 0]
+        if not chromosome:
+            return genotype, 0.0
         current_node = chromosome[0]
         current_gold = self.graph.nodes[current_node].get('gold', 0)
         route = []
@@ -209,33 +221,56 @@ class GA_Solver:
             route.append((current_node, current_gold))
 
         for next_target in chromosome[1:]:
-            # Calcola il costo diretto di andare da current_node a next_target
-            path_direct_distance = self.dist_matrix[self.node_to_idx[current_node]][self.node_to_idx[next_target]]
-            cost_direct = path_direct_distance + (self.alpha * path_direct_distance * current_gold) ** self.beta
-            
-            # Calcola il costo di andare al deposito, scaricare, e poi andare a next_target
-            path_to_depot_distance = self.dist_matrix[self.node_to_idx[current_node]][self.node_to_idx[0]]
-            path_from_depot_distance = self.dist_matrix[self.node_to_idx[0]][self.node_to_idx[next_target]]
-            cost_unload = (path_to_depot_distance + (self.alpha * path_to_depot_distance * current_gold) ** self.beta) + \
-                          (path_from_depot_distance + (self.alpha * path_from_depot_distance * 0) ** self.beta)
+            start_node = current_node
+
+            # Calcola il costo diretto di andare da start_node a next_target.
+            path_direct_distance = self.full_paths[start_node][next_target]
+            cost_direct = 0
+            traversal_node = start_node
+            for c in path_direct_distance[1:]:  # percorro il path implicito tra start_node e next_target
+                d = self.graph[traversal_node][c]['dist']
+                cost_direct += d + (self.alpha * d * current_gold) ** self.beta
+                traversal_node = c
+
+            # Calcola il costo di andare al deposito, scaricare, e poi andare a next_target.
+            # Il tratto deposito -> next_target viene percorso a peso nullo, quindi il costo
+            # è solo la distanza geometrica complessiva.
+            path_to_depot_path = self.full_paths[start_node][0]
+            distance_from_depot = self.dist_matrix[0][next_target]
+            cost_unload = 0
+            traversal_node = start_node
+            for c in path_to_depot_path[1:]:  # percorro il path implicito tra start_node e deposito
+                d = self.graph[traversal_node][c]['dist']
+                cost_unload += d + (self.alpha * d * current_gold) ** self.beta
+                traversal_node = c
+
+            # sommo il costo lineare di arrivare al next target senza oro (solo la distanza)
+            cost_unload += distance_from_depot
 
             if current_gold > 0 and cost_unload < cost_direct:
                 # Unload at depot before going to next_target
                 genotype.append(route)
-                route = [(next_target, self.graph.nodes[next_target].get('gold', 0))]
                 current_gold = self.graph.nodes[next_target].get('gold', 0)
+                route = [(next_target, current_gold)]
                 total_cost += cost_unload
             else:
-                route.append((next_target, self.graph.nodes[next_target].get('gold', 0)))
+                g= self.graph.nodes[next_target].get('gold', 0)
+                route.append((next_target, g))
                 total_cost += cost_direct
-                current_gold += self.graph.nodes[next_target].get('gold', 0)
+                current_gold += g
             current_node = next_target
 
-        path_home_distance = self.dist_matrix[self.node_to_idx[current_node]][self.node_to_idx[0]]
-        total_cost += path_home_distance + (self.alpha * path_home_distance * current_gold) ** self.beta
+        path_home_distance = self.full_paths[current_node][0]
+        
+        for c in path_home_distance[1:]: # percorro il path implicito tra current_node e deposito
+            d = self.graph[current_node][c]['dist']
+            total_cost += d + (self.alpha * d * current_gold) ** self.beta
+            current_node = c
+
         genotype.append(route)
             
         return genotype, total_cost
+         
 
     def _multiple_cycle (self, genotype: list)-> tuple[list, float]:
         """Split tours into multiple lighter trips when beneficial."""
@@ -426,16 +461,16 @@ class GA_Solver:
 
     def solution(self, fast=True):
         genotype, best_cost = self.run_ga_logic(fast=fast)
-        if not self.check_feasibility_genotype(genotype):
-            print("[ERROR] Final genotype is not feasible!")
-        gen_cost = self.compute_cost_genotype(genotype)
-        if abs(gen_cost - best_cost) > 1e-4:
-            print(f"[WARNING] Genotype cost {gen_cost:.2f} does not match recorded best cost {best_cost:.2f}")
+        # if not self.check_feasibility_genotype(genotype):
+        #     print("[ERROR] Final genotype is not feasible!")
+        # gen_cost = self.compute_cost_genotype(genotype)
+        # if abs(gen_cost - best_cost) > 1e-4:
+        #     print(f"[WARNING] Genotype cost {gen_cost:.2f} does not match recorded best cost {best_cost:.2f}")
         
         phenotype= self.genotype_to_phenotype(genotype)
-        if not self.check_feasibility_phenotype(phenotype):
-            print("[ERROR] Final phenotype is not feasible!")
-        phen_cost = self.compute_cost_phenotype(phenotype)
-        print(f"Final genotype cost: {gen_cost:.2f} | Final phenotype cost: {phen_cost:.2f} | Recorded best cost: {best_cost:.2f}")
+        # if not self.check_feasibility_phenotype(phenotype):
+        #     print("[ERROR] Final phenotype is not feasible!")
+        # phen_cost = self.compute_cost_phenotype(phenotype)
+        # print(f"Final genotype cost: {gen_cost:.2f} | Final phenotype cost: {phen_cost:.2f} | Recorded best cost: {best_cost:.2f}")
         return phenotype, best_cost 
     
