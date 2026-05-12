@@ -367,6 +367,10 @@ class GA_Solver:
                     new_genotype[index_gene] = gene
 
         return new_genotype, self.compute_cost_genotype(new_genotype)
+    
+    # MIGLIORAMENTO 
+    # al posto di mutation così potrei fare merge e split di geni, in modo da spostare interi segmenti di percorso da un gene all'altro, o creare nuovi geni (nuovi tour) o eliminarne alcuni (unire tour)
+    # e ottimizzarli (reorder) con la funzione _optimize_tour
 
     def crossover(self, parent1, parent2):
         # Applica un crossover tra due genotipi per generare un nuovo genotipo (figlio)

@@ -1,5 +1,5 @@
 from Problem import Problem
-from src.GA_solver import GA_Solver
+from src.GA_solver_2 import GA_Solver
 from src.utils import compute_ga_params
 
 def solution(p:Problem):
@@ -11,4 +11,4 @@ def solution(p:Problem):
     # set fast to True for a quicker solution, it enable starvation control in GA
     best_path , best_cost = solver.solution(fast=False)
 
-    return best_path[1:]  # Escludiamo il deposito (0) all'inizio come specificato dal professor Guseppe Esposito su Telegram
+    return best_path  # Non si deve partire dal deposito (0) come specificato dal professor Guseppe Esposito su Telegram
