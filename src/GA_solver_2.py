@@ -1,480 +1,723 @@
-
-import random 
-
+import random
 import numpy as np
 import networkx as nx
 
 
 class GA_Solver:
-   
+
     def __init__(self, problem, pop_size=50, generations=100, offprint=20):
         self.prob = problem
         self.graph = problem.graph
         self.alpha = problem.alpha
-        self.beta = problem.beta
-        
-        # Nodi rilevanti (deposito + città con oro)
-        self.relevant_nodes = sorted([n for n in self.graph.nodes if n == 0 or self.graph.nodes[n].get('gold', 0) > 0])
-        self.node_to_idx = {node: i for i, node in enumerate(self.relevant_nodes)}
+        self.beta  = problem.beta
+
+        # ── Relevant nodes (depot + gold cities), sorted ──────────────────
+        self.relevant_nodes = sorted(
+            n for n in self.graph.nodes
+            if n == 0 or self.graph.nodes[n].get('gold', 0) > 0
+        )
+        self.node_to_idx    = {node: i for i, node in enumerate(self.relevant_nodes)}
         self.cities_to_visit = [n for n in self.relevant_nodes if n != 0]
         n_rel = len(self.relevant_nodes)
 
-        # Matrici NumPy per distanze e oro (accesso ultra-rapido)
-        self.dist_matrix = np.zeros((n_rel, n_rel))
-        # Conserviamo i path reali (nodi del grafo originale) tra nodi rilevanti
-        self.full_paths = [[None] * n_rel for _ in range(n_rel)]
-        self.node_gold = {n: self.graph.nodes[n].get('gold', 0) for n in self.graph.nodes}
+        # ── NumPy distance matrix (O(1) index lookup) ─────────────────────
+        self.dist_matrix = np.zeros((n_rel, n_rel), dtype=np.float64)
+        self.full_paths  = [[None] * n_rel for _ in range(n_rel)]
+        self.node_gold   = {n: self.graph.nodes[n].get('gold', 0)
+                            for n in self.graph.nodes}
 
         for i, source in enumerate(self.relevant_nodes):
-            lengths, paths = nx.single_source_dijkstra(self.graph, source, weight='dist')
+            lengths, paths = nx.single_source_dijkstra(
+                self.graph, source, weight='dist'
+            )
             for j, target in enumerate(self.relevant_nodes):
                 if target in lengths:
                     self.dist_matrix[i, j] = lengths[target]
-                    self.full_paths[i][j] = paths[target]
+                    self.full_paths[i][j]   = paths[target]
 
-        self.pop_size = pop_size
+        # ── Flat edge-distance dict: (u,v) -> float  ──────────────────────
+        # Eliminates repeated graph[u][v]['dist'] attribute lookups in hot loops.
+        self._edge_dist: dict[tuple, float] = {}
+        for u, v, data in self.graph.edges(data=True):
+            d = data.get('dist', 0.0)
+            self._edge_dist[(u, v)] = d
+            self._edge_dist[(v, u)] = d
+
+        # ── Pre-computed per-gene dist arrays ─────────────────────────────
+        # For every (source_idx, target_idx) pair we cache the list of edge
+        # distances along the shortest path. This avoids re-walking paths
+        # and repeated dict lookups during the hot inner loop.
+        self._path_dists: list[list] = [[None] * n_rel for _ in range(n_rel)]
+        ed = self._edge_dist
+        for i in range(n_rel):
+            for j in range(n_rel):
+                path = self.full_paths[i][j]
+                if path is not None and len(path) >= 2:
+                    self._path_dists[i][j] = [
+                        ed[(path[k], path[k+1])] for k in range(len(path)-1)
+                    ]
+                else:
+                    self._path_dists[i][j] = []
+
+        # ── Local copies of hot scalars ────────────────────────────────────
+        self._alpha = float(self.alpha)
+        self._beta  = float(self.beta)
+
+        self.pop_size    = pop_size
         self.generations = generations
-        self.offprint = offprint
+        self.offprint    = offprint
 
-    def compute_cost_genotype(self, genotype):
-        # Calcola il costo totale del percorso rappresentato dal genotipo (permutazione dei nodi rilevanti)
-        # genotype sample: [[ (1,10)] , [(2,20), (3,30)] ...]
-        total_cost=0
+        beta_factor = 0.5 * (1.0 - self.prob.beta)
+        alpha_influence = 0.2 * (0.05 - self.prob.alpha) if 0.9 <= self.prob.beta <= 1.1 else 0
+        threshold = 0.5 + beta_factor + alpha_influence
         
-        for gene in genotype:
-            start=0
-            gene_cost=0
-            gold=0
-            for city, gold_amount in gene:
-                # necessario calcolare il costo edge per edge per tenere conto del peso dinamico (oro raccolto)
-                # per Beta > 1 non è equivalente usare la distanza totale del percorso implicito tra start e city, perchè il peso (oro) cambia ad ogni edge
-                implicit_path= self.full_paths[start][city]
-                
-                for c in implicit_path[1:]: # percorro il path implicito tra start e city
-                    d= self.graph[start][c]['dist']
-                    gene_cost+= d + (d* self.alpha*gold )**self.beta
-                    start=c
-                
-                gold+= gold_amount
-            
-            # ultimo percorso 
-            last_path= self.full_paths[start][0]
-            for c in last_path[1:]: # percorro il path implicito tra start e depot
-                last_d= self.graph[start][c]['dist']
-                gene_cost+= last_d + (last_d* self.alpha*gold )**self.beta
-                start=c
-            total_cost+=gene_cost 
-        
-        # tolgo la distanza tra depot e prima città con oro -> si parte dalla prima città con oro
-        start_cost= self.dist_matrix[0][genotype[0][0][0]]
-        total_cost-= start_cost
-        return total_cost
+        threshold = max(0.1, min(0.9, threshold))
+        self.mutation_threshold = threshold
 
-    def check_feasibility_genotype(self, genotype):
-        # Verifica che il genotipo rappresenti un percorso valido: esiste un percorso tra i nodi e viene raccolto tutto l'oro
-        problem = self.prob
-        graph = problem.graph
-        gold_at = nx.get_node_attributes(graph, "gold")
-        
-        gold_collected = {}
-        i = 0
+    # ──────────────────────────────────────────────────────────────────────
+    #  CORE COST — pure Python, no per-call np.array allocation
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _gene_cost(self, gene: list) -> float:
+        """
+        Cost of one gene (round-trip from/to depot).
+        Uses pre-computed per-edge distance lists; pure Python arithmetic
+        is faster than np.array construction for the typical gene length.
+        """
+        alpha   = self._alpha
+        beta    = self._beta
+        pd      = self._path_dists
+        n2i     = self.node_to_idx
+        gold    = 0.0
+        total   = 0.0
+        prev    = 0   # depot
+
+        for city, gold_amount in gene:
+            ci  = n2i[city]
+            for d in pd[n2i[prev]][ci]:
+                total += d + (alpha * d * gold) ** beta
+            gold += gold_amount
+            prev  = city
+
+        # Return leg
+        for d in pd[n2i[prev]][0]:
+            total += d + (alpha * d * gold) ** beta
+
+        return total
+
+    def compute_cost_genotype(self, genotype: list) -> float:
+        """
+        Total cost of a genotype.
+        Subtracts the free depot→first_city leg (matches original semantics).
+        """
+        if not genotype:
+            return 0.0
+
+        gc    = self._gene_cost
+        total = 0.0
         for gene in genotype:
-            start=0
+            total += gc(gene)
+
+        first_city = genotype[0][0][0]
+        start_cost = float(self.dist_matrix[0, self.node_to_idx[first_city]])
+        return total - start_cost
+
+    # ──────────────────────────────────────────────────────────────────────
+    #  FEASIBILITY
+    # ──────────────────────────────────────────────────────────────────────
+
+    def check_feasibility_genotype(self, genotype: list) -> bool:
+        gold_collected: dict[int, float] = {}
+        for gene in genotype:
+            start = 0
             for city, gold in gene:
-                # check path existence
                 if self.full_paths[start][city] is None:
-                    print(f"[FAIL] Feasibility failed: no path between {start} and {city}")
-                    print(f"Gene segment: {start} -> {city}")
+                    print(f"[FAIL] no path {start} -> {city}")
                     return False
-                
-                # Track collected gold
                 if gold > 0:
                     gold_collected[city] = gold_collected.get(city, 0.0) + gold
                 start = city
-             
-        # Verify all gold was collected
-        for city in graph.nodes():
-            if city == 0:  # Depot has no gold
+
+        gold_at = nx.get_node_attributes(self.graph, "gold")
+        for city in self.graph.nodes():
+            if city == 0:
                 continue
-            expected_gold = gold_at.get(city, 0.0)
-            collected_gold = gold_collected.get(city, 0.0)
-            
-            if abs(expected_gold - collected_gold) > 1e-4:  # Float tolerance
-                print(f"[FAIL] Feasibility failed: city {city} i={i} has {expected_gold:.2f} gold, collected {collected_gold:.2f}")
+            if abs(gold_at.get(city, 0.0) - gold_collected.get(city, 0.0)) > 1e-4:
+                print(f"[FAIL] city {city}: expected {gold_at.get(city,0):.2f}, "
+                      f"got {gold_collected.get(city,0):.2f}")
                 return False
-            i += 1
         return True
 
-    def genotype_to_phenotype(self, genotype):
-        # Converte un genotipo (permutazione dei nodi rilevanti) in un fenotipo (percorso reale con nodi del grafo originale)
-        phenotype= []
+    def check_feasibility_phenotype(self, phenotype: list) -> bool:
+        if not phenotype:
+            return False
+        gold_at          = nx.get_node_attributes(self.graph, "gold")
+        gold_collected: dict[int, float] = {}
+        start, init_gold = phenotype[0]
+        if init_gold > 0:
+            gold_collected[start] = init_gold
+
+        for city, gold in phenotype[1:]:
+            if not self.graph.has_edge(start, city):
+                print(f"[FAIL] no edge {start} -> {city}")
+                return False
+            if gold > 0:
+                gold_collected[city] = gold_collected.get(city, 0.0) + gold
+            start = city
+
+        for city in self.graph.nodes():
+            if city == 0:
+                continue
+            if abs(gold_at.get(city, 0.0) - gold_collected.get(city, 0.0)) > 1e-4:
+                print(f"[FAIL] city {city}: expected {gold_at.get(city,0):.2f}, "
+                      f"got {gold_collected.get(city,0):.2f}")
+                return False
+        return True
+
+    # ──────────────────────────────────────────────────────────────────────
+    #  REPRESENTATION CONVERSION
+    # ──────────────────────────────────────────────────────────────────────
+
+    def genotype_to_phenotype(self, genotype: list) -> list:
+        phenotype = []
         if not genotype:
             return phenotype
 
+        n2i = self.node_to_idx
+        fp  = self.full_paths
+
         for gene in genotype:
-            start=0
+            start = 0
             for city, gold in gene:
-                implicit_cities = [(c, 0) for c in self.full_paths[start][city][1:-1]]
-                phenotype.extend(implicit_cities)
+                for c in fp[n2i[start]][n2i[city]][1:-1]:
+                    phenotype.append((c, 0))
                 phenotype.append((city, gold))
-                start= city
-            depot=0
-            implicit_cities = [(c, 0) for c in self.full_paths[start][depot][1:]]
-            phenotype.extend(implicit_cities)
-        
-        # tolgo le prime città implicite 
-        first_city=genotype[0][0]
-        index= phenotype.index(first_city)
-        return phenotype[index:] # Return the segment starting from the first city
-            
+                start = city
+            for c in fp[n2i[start]][0][1:]:
+                phenotype.append((c, 0))
 
-    def compute_cost_phenotype(self, phenotype):
-        # Calcola il costo totale del percorso reale 
-        # phenotype sample= [(1,10), (0,0), (1,0), (2,20), (1,0), (0,0)]
-        total_cost = 0
-        start= phenotype[0][0]
-        current_gold= phenotype[0][1]
-        for city, gold in phenotype[1:]:
-            # controllo se esiste l'arco u, v
-            if not self.graph.has_edge(start, city):
-                print(f"Warning: No edge between {start} and {city}. Returning inf cost.")
-                return float("inf")
-            d = self.graph[start][city]['dist']
-            total_cost += d + (self.prob.alpha * d * current_gold) ** self.prob.beta
-            if city == 0:
-                current_gold = 0
-            else:
-                current_gold += gold
-            
-            start = city
-        
-        return total_cost
+        first_city = genotype[0][0]          # (city, gold) tuple
+        idx = phenotype.index(first_city)
+        return phenotype[idx:]
 
-    def check_feasibility_phenotype(self, phenotype):
-        # Verifica che il phenotype sia valido
-        problem = self.prob
-        graph = problem.graph
-        gold_at = nx.get_node_attributes(graph, "gold")
-
+    def compute_cost_phenotype(self, phenotype: list) -> float:
         if not phenotype:
-            return False
-        
-        # Track collected gold per city
-        gold_collected = {}
-
-        start = phenotype[0][0]
-        initial_gold = phenotype[0][1]
-        
-        # Track initial node's gold
-        if initial_gold > 0:
-            gold_collected[start] = initial_gold
-        
+            return 0.0
+        alpha = self._alpha
+        beta  = self._beta
+        total = 0.0
+        start, current_gold = phenotype[0]
+        g = self.graph
         for city, gold in phenotype[1:]:
-            # Check adjacency
-            if not graph.has_edge(start, city):
-                print(f"[FAIL] Feasibility failed: no edge between {start} and {city}")
-                print(f"Path segment: {city} -> {city}")
-                print(phenotype)
-                return False
-            
-            # Track collected gold
-            if gold > 0:
-                gold_collected[city] = gold_collected.get(city, 0.0) + gold
-                
+            if not g.has_edge(start, city):
+                return float("inf")
+            d = g[start][city]['dist']
+            total += d + (alpha * d * current_gold) ** beta
+            current_gold = 0.0 if city == 0 else current_gold + gold
             start = city
-        
-        # Verify all gold was collected
-        for city in graph.nodes():
-            if city == 0:  # Depot has no gold
-                continue
-            expected_gold = gold_at.get(city, 0.0)
-            collected_gold = gold_collected.get(city, 0.0)
-            
-            if abs(expected_gold - collected_gold) > 1e-4:  # Float tolerance
-                print(f"[FAIL] Feasibility failed: city {city} has {expected_gold:.2f} gold, collected {collected_gold:.2f}")
-                return False
-            
-        return True
-    
-    
-    def evaluate_and_segment(self, chromosome: list[int]) -> tuple[list[tuple[int, float]], float]:
-        """Greedy decoder: decides whether to return to the depot to unload.
-        
-        Args:            
-            chromosome: List of city indices to visit in order (excluding depot).
-        Returns:            
-            genotype. list of list of tuples (city, gold collected at city) representing the route with explicit unloads.
-            total_cost: Total cost of the route.
+        return total
+
+    # ──────────────────────────────────────────────────────────────────────
+    #  GREEDY DECODER
+    # ──────────────────────────────────────────────────────────────────────
+
+    def evaluate_and_segment(self, chromosome: list) -> tuple:
         """
-        genotype = []
-        # se nel chromosome è presente il deposito, lo tolgo (non ha senso visitarlo più di una volta)
+        Greedy decoder: for each city decides whether detour via depot is cheaper.
+        Uses pre-computed _path_dists to avoid repeated dict lookups.
+        """
         chromosome = [c for c in chromosome if c != 0]
         if not chromosome:
-            return genotype, 0.0
-        current_node = chromosome[0]
-        current_gold = self.graph.nodes[current_node].get('gold', 0)
-        route = []
-        
-        total_cost = 0
-        
-        if current_gold > 0:
-            route.append((current_node, current_gold))
+            return [], 0.0
+
+        pd    = self._path_dists
+        n2i   = self.node_to_idx
+        ng    = self.node_gold
+        dm    = self.dist_matrix
+        alpha = self._alpha
+        beta  = self._beta
+
+        def _walk_cost(path_ds: list, carry: float) -> float:
+            t = 0.0
+            for d in path_ds:
+                t += d + (alpha * d * carry) ** beta
+            return t
+
+        current_node  = chromosome[0]
+        ni_cur        = n2i[current_node]
+        current_gold  = ng.get(current_node, 0.0)
+        route         = [(current_node, current_gold)]
+        genotype      = []
+        total_cost    = 0.0
 
         for next_target in chromosome[1:]:
-            start_node = current_node
+            ni_next = n2i[next_target]
 
-            # Calcola il costo diretto di andare da start_node a next_target.
-            path_direct_distance = self.full_paths[start_node][next_target]
-            cost_direct = 0
-            traversal_node = start_node
-            for c in path_direct_distance[1:]:  # percorro il path implicito tra start_node e next_target
-                d = self.graph[traversal_node][c]['dist']
-                cost_direct += d + (self.alpha * d * current_gold) ** self.beta
-                traversal_node = c
+            # Direct cost
+            cost_direct = _walk_cost(pd[ni_cur][ni_next], current_gold)
 
-            # Calcola il costo di andare al deposito, scaricare, e poi andare a next_target.
-            # Il tratto deposito -> next_target viene percorso a peso nullo, quindi il costo
-            # è solo la distanza geometrica complessiva.
-            path_to_depot_path = self.full_paths[start_node][0]
-            distance_from_depot = self.dist_matrix[0][next_target]
-            cost_unload = 0
-            traversal_node = start_node
-            for c in path_to_depot_path[1:]:  # percorro il path implicito tra start_node e deposito
-                d = self.graph[traversal_node][c]['dist']
-                cost_unload += d + (self.alpha * d * current_gold) ** self.beta
-                traversal_node = c
+            # Unload cost (weighted leg home + free dist to next)
+            if current_gold > 0:
+                cost_unload = (_walk_cost(pd[ni_cur][0], current_gold)
+                               + float(dm[0, ni_next]))
+                do_unload = cost_unload < cost_direct
+            else:
+                cost_unload = 0.0
+                do_unload   = False
 
-            # sommo il costo lineare di arrivare al next target senza oro (solo la distanza)
-            cost_unload += distance_from_depot
-
-            if current_gold > 0 and cost_unload < cost_direct:
-                # Unload at depot before going to next_target
+            if do_unload:
                 genotype.append(route)
-                current_gold = self.graph.nodes[next_target].get('gold', 0)
-                route = [(next_target, current_gold)]
+                g = ng.get(next_target, 0.0)
+                current_gold = g
+                route = [(next_target, g)]
                 total_cost += cost_unload
             else:
-                g= self.graph.nodes[next_target].get('gold', 0)
+                g = ng.get(next_target, 0.0)
                 route.append((next_target, g))
                 total_cost += cost_direct
                 current_gold += g
+
             current_node = next_target
+            ni_cur       = ni_next
 
-        path_home_distance = self.full_paths[current_node][0]
-        
-        for c in path_home_distance[1:]: # percorro il path implicito tra current_node e deposito
-            d = self.graph[current_node][c]['dist']
-            total_cost += d + (self.alpha * d * current_gold) ** self.beta
-            current_node = c
-
+        # Final return leg
+        total_cost += _walk_cost(pd[ni_cur][0], current_gold)
         genotype.append(route)
-            
         return genotype, total_cost
-         
 
-    def _multiple_cycle (self, genotype: list)-> tuple[list, float]:
+    # ──────────────────────────────────────────────────────────────────────
+    #  MULTIPLE-CYCLE OPTIMISER
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _multiple_cycle(self, genotype: list) -> tuple:
         """Split tours into multiple lighter trips when beneficial."""
         new_genotype = []
+        gc = self._gene_cost   # local alias
+
         for tour in genotype:
-            cost= self.compute_cost_genotype([tour])
-          
-            best_factor=1
-            min_gold= min(tour, key=lambda x: x[1])[1]
-            for i in range(2, int (min_gold)+1 ):
-              single_trip=[]
-              # calcola il consto di approssimato di 1 trip: i* costo_singolo_tour(prendendo w//i oro)
-              single_trip.extend( [ (c, w//i ) for (c, w) in tour ]) 
-              cost_single_trip= self.compute_cost_genotype([single_trip])
-              approx_cost= cost_single_trip*i
+            cost     = gc(tour)
+            min_gold = min(w for _, w in tour)
+            best_factor = 1
 
-              if cost_single_trip*i < cost :
-                  cost= approx_cost
-                  best_factor=i
-                  continue 
-              else:
-                  break # Dato che i cresce, se non migliora non migliorerà più
-          
-            # costruisco il genotype con w//best_factor e r= w%best_factor      
-            for j in range(best_factor):
-                r= [ 0 for _ in tour]
-                if j== best_factor-1:
-                    r= [ w % best_factor for c, w in tour]
-                new_genotype.append( [ (c, w//best_factor + r) for (c, w), r in zip(tour, r) ]) 
-            
-        return new_genotype, self.compute_cost_genotype( new_genotype) 
-    
+            for i in range(2, int(min_gold) + 1):
+                single_trip = [(c, w // i) for c, w in tour]
+                c_single    = gc(single_trip)
+                approx_cost = c_single * i
 
-    def _optimize_tour(self, gene: list[tuple[int, float]]) -> list[tuple[int, float]]:
-        """Re-decode a single tour to improve its visit order."""
-        ## orded the city from the farest to the closest to the depot, while keeping the same gold amounts
-        ## check if the tour can be simplified by reordering cities (we don't want to repeat path segments if not necessary)
-        pass  # Da implementare
-    
-    
-    
+                if approx_cost < cost:
+                    cost        = approx_cost
+                    best_factor = i
+                else:
+                    break   # monotone
 
-# ------------ GENETIC ALGORITHM LOGIC ------------
-    
-    def generate_initial_population(self):
-        # Genera una popolazione iniziale di genotipi (permutazioni dei nodi rilevanti)
-        # Ogni genotipo rappresenta un possibile percorso di raccolta dell'oro
-
-        population = []
-        for _ in range(self.pop_size):
-            chromosome = self.cities_to_visit[:]
-            np.random.shuffle(chromosome)
-            genotype, cost= self.evaluate_and_segment(chromosome)
-            if self.beta > 1.0:
-                genotype, cost= self._multiple_cycle(genotype)
-            population.append((genotype, cost))
-
-        return population
-    
-
-    def mutation(self, genotype):
-        # Applica una mutazione al genotipo: ad esempio, scambia due nodi o inverte un segmento del percorso
-        # genotype sample: [[ (1,10)] , [(2,20), (3,30)] ...]
-        switch = np.random.rand()
-        new_genotype = [list(gene) for gene in genotype]  # Deep copy of genotype
-        
-        if switch < 0.8:
-            # Swap mutation: scambia due tuple tra geni diversi
-            if len(new_genotype) >= 2:
-                index_g1, index_g2 = np.random.choice(len(new_genotype), 2, replace=False)
-                gene1 = new_genotype[index_g1]
-                gene2 = new_genotype[index_g2]
-                
-                if len(gene1) > 0 and len(gene2) > 0:
-                    idx1 = np.random.randint(len(gene1))
-                    idx2 = np.random.randint(len(gene2))
-                    
-                    # Scambia gli elementi
-                    gene1[idx1], gene2[idx2] = gene2[idx2], gene1[idx1]
-                    
-                    new_genotype[index_g1] = gene1
-                    new_genotype[index_g2] = gene2
-        else:
-            # Inversion mutation: inverte un segmento all'interno di un gene
-            if len(new_genotype) > 0:
-                index_gene = np.random.randint(len(new_genotype))
-                gene = new_genotype[index_gene]
-                
-                if len(gene) > 1:
-                    # Inverti un sottosegmento casuale
-                    start = np.random.randint(len(gene))
-                    end = np.random.randint(start + 1, len(gene) + 1)
-                    gene[start:end] = gene[start:end][::-1]
-                    new_genotype[index_gene] = gene
+            if best_factor == 1:
+                new_genotype.append(tour)
+            else:
+                for j in range(best_factor):
+                    remainders = [0] * len(tour)
+                    if j == best_factor - 1:
+                        remainders = [w % best_factor for _, w in tour]
+                    new_genotype.append(
+                        [(c, w // best_factor + r)
+                         for (c, w), r in zip(tour, remainders)]
+                    )
 
         return new_genotype, self.compute_cost_genotype(new_genotype)
     
-    # MIGLIORAMENTO 
-    # al posto di mutation così potrei fare merge e split di geni, in modo da spostare interi segmenti di percorso da un gene all'altro, o creare nuovi geni (nuovi tour) o eliminarne alcuni (unire tour)
-    # e ottimizzarli (reorder) con la funzione _optimize_tour
+    # ──────────────────────────────────────────────────────────────────────
+    #  GENE OPTIMIZER 
+    # ──────────────────────────────────────────────────────────────────────
 
-    def crossover(self, parent1, parent2):
-        # Applica un crossover tra due genotipi per generare un nuovo genotipo (figlio)
-        # Prende le prime n città da parent1 e le rimanenti da parent2, mantenendo l'ordine
+    # NOTA: testare ogni permutazione è troppo COSTOSO
+    def optimize_gene_optimal(self, gene: list) -> tuple:
+        """
+        Optimize a single gene by trying all permutations of its cities.
+        Returns the best gene and its cost.
+        """
+        from itertools import permutations
+
+        best_gene = gene
+        gc= self._gene_cost
+        best_cost = gc(gene)
+
+        cities = [c for c, _ in gene]
+        golds  = [g for _, g in gene]
+
+        for perm in permutations(range(len(gene))):
+            permuted_gene = [(cities[i], golds[i]) for i in perm]
+            cost = gc(permuted_gene)
+            if cost < best_cost:
+                best_cost = cost
+                best_gene = permuted_gene
+
+        return best_gene, best_cost
+
+    def optimize_gene_suboptimal(self, gene):
+        """
+        FARTHES INSERTION heuristic for TSP applied to a single gene.
+        Costruisce un loop partendo dalle città più lontane.
+        Ottimo per evitare incroci senza calcoli pesanti.
+        """
+        if not gene:
+            return [], 0.0
+
+        if len(gene) < 2:
+            return list(gene), self._gene_cost(gene)
+
+        # Preserve the exact city->gold assignment and only reorder cities.
+        gold_map = {city: gold for city, gold in gene}
+        cities = list(gold_map.keys())
+        unvisited = set(cities)
+
+        # Start from the farthest city from the depot.
+        first_city = max(unvisited, key=lambda city: self.dist_matrix[0][self.node_to_idx[city]])
+        tour = [first_city]
+        unvisited.remove(first_city)
+
+        while unvisited:
+            # Pick the city farthest from the current partial tour.
+            next_city = max(
+                unvisited,
+                key=lambda city: min(
+                    self.dist_matrix[self.node_to_idx[city]][self.node_to_idx[tour_city]]
+                    for tour_city in tour
+                ),
+            )
+
+            # Insert it in the position that minimizes the actual gene cost.
+            best_cost = float('inf')
+            best_tour = None
+
+            for insert_pos in range(len(tour) + 1):
+                candidate_order = tour[:insert_pos] + [next_city] + tour[insert_pos:]
+                candidate_gene = [(city, gold_map[city]) for city in candidate_order]
+                candidate_cost = self._gene_cost(candidate_gene)
+                if candidate_cost < best_cost:
+                    best_cost = candidate_cost
+                    best_tour = candidate_order
+
+            tour = best_tour
+            unvisited.remove(next_city)
+
+        optimized_gene = [(city, gold_map[city]) for city in tour]
+        return optimized_gene, self._gene_cost(optimized_gene)
+    
+    
+    
+    def optimize_gene(self, gene):
+        """
+        Wrapper for gene optimization. Chooses between optimal and suboptimal based on gene length.
+        """
+        if len(gene) <= 6:  # Threshold can be tuned based on performance tests
+            return self.optimize_gene_optimal(gene)
+        else:
+            return self.optimize_gene_suboptimal(gene)
         
-        # Estrai le città da ogni parent in ordine di visita
+    def merge_genes(self, gene1: list, gene2: list) -> tuple:
+        """
+        Merge two genes into one by concatenating their cities and summing gold.
+        Returns the merged gene and its cost.
+        """
+        # se una o più città compaiono in entrambi i geni, somma l'oro e mantieni una sola occorrenza
+        g1_cities = [ c for c, g in gene1 ]
+        g2_cities = [ c for c, g in gene2 ]
+
+        intersection_cities= set(g1_cities) & set(g2_cities)
+        if intersection_cities:
+            merged_dict = {}
+            for c, g in gene1 + gene2:
+                merged_dict[c] = merged_dict.get(c, 0) + g
+            merged_gene = list(merged_dict.items())
+        else:
+            merged_gene = gene1 + gene2
+        
+        
+        merged_gene, cost = self.optimize_gene(merged_gene) # Optimize the merged gene
+        
+        return merged_gene, cost
+    
+    def split_gene(self, gene: list, split_index: int) -> tuple:
+        """
+        Split a gene into two at the given index.
+        Returns the two new genes and their costs.
+        """
+        gc= self._gene_cost
+        og= self.optimize_gene
+        gene1 = gene[:split_index]
+        gene2 = gene[split_index:]
+
+        gene1, cost1 = og(gene1) # Optimize gene1
+        gene2, cost2 = og(gene2) # Optimize gene2
+
+        cost1 = gc(gene1)
+        cost2 = gc(gene2)
+
+        return (gene1, cost1), (gene2, cost2)
+
+
+    # ──────────────────────────────────────────────────────────────────────
+    #  INITIAL POPULATION
+    # ──────────────────────────────────────────────────────────────────────
+    def _greedy_solution(self) -> list:
+        """
+        Neirest Neighbour greedy solution based on distance from previous city."""
+        if not self.cities_to_visit:
+            return []
+
+        unvisited = set(self.cities_to_visit)
+        tour = []
+        current = 0  # start at depot
+
+        while unvisited:
+            next_city = min(
+                unvisited,
+                key=lambda city: self.dist_matrix[self.node_to_idx[current]][self.node_to_idx[city]]
+            )
+            tour.append(next_city)
+            unvisited.remove(next_city)
+            current = next_city
+
+        return tour
+    
+    
+    def generate_initial_population(self) -> list:
+        population = []
+        ctv    = self.cities_to_visit
+        mc     = self._multiple_cycle
+        eas    = self.evaluate_and_segment
+        use_mc = self.beta > 1.0
+
+        # first chromosome is the greedy solution (sorted Neirest Neighbour based on distance from depot)
+
+        # chromosome = self._greedy_solution()
+        # genotype, cost = eas(chromosome)
+        if self.prob.beta >= 0.5:
+            # se beta < 0.5 partire dalla baseline è sconveniente
+            greedy=1
+        else:
+            greedy=0
+
+        if greedy:
+            
+            greedy_gen, greedy_cost= self._improved_baseline_individual()
+            population.append((greedy_gen, greedy_cost))
+        for _ in range(self.pop_size - greedy):
+            chromosome = ctv[:]
+            np.random.shuffle(chromosome)
+            genotype, cost = eas(chromosome)
+            if use_mc:
+                genotype, cost = mc(genotype)
+            population.append((genotype, cost))
+
+        return population
+
+    def _improved_baseline_individual(self):
+        """Construct a baseline solution and iteratively merge tours if beneficial."""
+        
+        # 1. Generiamo l'ordine di visita iniziale (Nearest Neighbor semplice)
+        cities_to_visit = list(self.cities_to_visit)
+        # per risparmiare sull'andata del primo viaggio possiamo partire dalla città più lontana dal deposito, poi NN normale
+        current_city = max(range(len(self.cities_to_visit)), key=lambda i: self.dist_matrix[0][i])
+        cities_to_visit.remove(current_city)
+        ordered_targets = []
+        while cities_to_visit:
+            next_city = min(cities_to_visit, key=lambda c: self.dist_matrix[current_city][c])
+            ordered_targets.append(next_city)
+            cities_to_visit.remove(next_city)
+            current_city = next_city
+
+        # 2. Creiamo i tour iniziali: ogni città è un tour Deposito -> Target -> Deposito
+        # Memorizziamo i tour COMPLETI (incluso lo zero iniziale e finale)
+        genotype = []
+    
+        for target in ordered_targets:
+            gold = self.graph.nodes[target]['gold']
+            if gold <= 0: continue
+            genotype.append([(target, gold)])
+            
+
+
+        # 3. Iterative Merge
+        changed = True
+        while changed:
+            changed = False
+            i = 0
+            while i < len(genotype) - 1:
+                gene_a = genotype[i]
+                gene_b = genotype[i+1]
+                
+                # Calcoliamo i costi separati
+                cost_a = self._gene_cost(gene_a)
+                cost_b = self._gene_cost(gene_b)
+                
+                # Proviamo il merge
+                # NOTA: Assicurati che _merge_two_tours accetti tour che iniziano/finiscono con (0,0)
+                merged_gene, merged_cost = self.merge_genes(gene_a, gene_b)
+                
+                if merged_cost < (cost_a + cost_b):
+                    genotype[i] = merged_gene
+                    genotype.pop(i + 1)
+                    changed = True
+                    # Non incrementiamo i per ricontrollare il nuovo tour con il suo prossimo vicino
+                else:
+                    i += 1
+        
+        return genotype, self.compute_cost_genotype(genotype)
+
+    # ──────────────────────────────────────────────────────────────────────
+    #  GA OPERATORS
+    # ──────────────────────────────────────────────────────────────────────
+
+    def mutation(self, genotype: list) -> tuple:
+        """
+        Two modes:
+          < 0.8 → split a random gene into two (if it has ≥ 2 cities)
+          ≥ 0.8 → merge two random genes into one (if it doesn't exceed gold limits)
+        """
+        if not genotype:
+            return genotype, self.compute_cost_genotype(genotype)
+        
+        # scegliamo dinamicamente se preferire spli o merge in base a beta
+
+
+        ratio = random.random()
+
+        if ratio <= self.mutation_threshold:
+            # Split
+            # selezionare solo i geni che hanno almeno 2 città (escludendo il depot) per evitare split non validi
+            valid_indices = [i for i, g in enumerate(genotype) if len(g) >= 2]
+            if not valid_indices:
+                #print(f"[MUTATION] Baseline every gene is lenght 1:")
+                return genotype, self.compute_cost_genotype(genotype)
+            gene_idx = random.choice(valid_indices)
+            gene = genotype[gene_idx]
+            (g1, c1), (g2, c2) = self.split_gene(gene, len(gene) // 2)
+            new_genotype = genotype[:gene_idx] + [g1, g2] + genotype[gene_idx+1:]
+            new_cost = self.compute_cost_genotype(new_genotype)
+            return new_genotype, new_cost
+        else:
+            # Merge
+            if len(genotype) < 2:
+                #print(f"[MUTATION] not enough genes to merge: {genotype}")
+                return genotype, self.compute_cost_genotype(genotype)
+            idx1, idx2 = random.sample(range(len(genotype)), 2)
+            g1, g2 = genotype[idx1], genotype[idx2]
+            merged_gene, merged_cost = self.merge_genes(g1, g2)
+            new_genotype = [g for i, g in enumerate(genotype) if i not in (idx1, idx2)] + [merged_gene]
+            new_cost = self.compute_cost_genotype(new_genotype)
+            return new_genotype, new_cost
+
+
+    def crossover(self, parent1: list, parent2: list) -> tuple:
+        """
+        Order crossover: take first n cities from parent1, rest from parent2,
+        re-decode with evaluate_and_segment to guarantee feasibility.
+        """
         cities_p1 = [city for gene in parent1 for city, _ in gene]
         cities_p2 = [city for gene in parent2 for city, _ in gene]
-        
-        # Crossover: prendi n città da parent1 e il resto da parent2
-        n = np.random.randint(1, max(2, len(self.cities_to_visit)))
-        
-        # Crea chromosome: prime n città da parent1, poi quelle mancanti da parent2
+
+        n          = np.random.randint(1, max(2, len(self.cities_to_visit)))
         chromosome = []
-        cities_seen = set()
-        
-        # Aggiungi le prime n città da parent1
+        seen: set  = set()
+
         for city in cities_p1[:n]:
-            if city not in cities_seen:
+            if city not in seen:
                 chromosome.append(city)
-                cities_seen.add(city)
-        
-        # Aggiungi le città rimanenti da parent2
+                seen.add(city)
+
+        ctv_set = set(self.cities_to_visit)
         for city in cities_p2:
-            if city not in cities_seen and city in self.cities_to_visit:
+            if city not in seen and city in ctv_set:
                 chromosome.append(city)
-                cities_seen.add(city)
-        
-        # Se mancano ancora città, aggiungile
+                seen.add(city)
+
         for city in self.cities_to_visit:
-            if city not in cities_seen:
+            if city not in seen:
                 chromosome.append(city)
-                cities_seen.add(city)
-        
+                seen.add(city)
+
         genotype, cost = self.evaluate_and_segment(chromosome)
-        if self.beta > 1.0:
+        if self._beta > 1.0:
             genotype, cost = self._multiple_cycle(genotype)
         return genotype, cost
-            
+
         
-    
-    def run_ga_logic(self, fast: bool = False )-> list:
-        # Logica dell'algoritmo genetico: selezione, crossover, mutazione, e valutazione della fitness
-        # Restituisce il percorso ottimizzato (genotype) come lista di tuple (nodo, oro raccolto)
-                # Per problemi grandi e beta>=2 , uso solo la greedy perchè multiple_cycle è molto costosa
-        # if self.prob.beta >= 2.0 and len(self.cities_to_visit) > 1000:
-        #     solution, _ = self._greedy_initialization()
-        #     return solution
-        # population = []
 
+    # ──────────────────────────────────────────────────────────────────────
+    #  GA MAIN LOOP
+    # ──────────────────────────────────────────────────────────────────────
 
-        population = self.generate_initial_population()
-        population= [(ind, cost) for ind, cost in sorted(population, key=lambda x: x[1])]  # ordina per costo
-        
-        best_chromo = population[0][0]
-        best_cost = population[0][1]
+    def run_ga_logic(self, fast: bool = False) -> tuple:
+        """
+        GA loop with:
+          - Population as (cost, genotype) tuples → sort on float, not list
+          - Inline tournament selection (no lambda)
+          - Elitism: best always survives
+        """
+        raw_pop = self.generate_initial_population()
+        # (cost, genotype) so sort key is just a float
+        pop: list = [(c, g) for g, c in raw_pop]
+        pop.sort(key=lambda x: x[0])
 
-        stagnation_counter = 0
+        max_generation=0
 
-        for gen in range(self.generations):
+        best_cost, best_chromo = pop[0]
+        stagnation = 0
+        half_off   = self.offprint // 2
+        _mutation  = self.mutation
+        _crossover = self.crossover
+
+        for _gen in range(self.generations):
             next_gen = []
-            for _ in range(self.offprint//2):
-                parents = []
-                for _ in range(2):
-                    candidates = random.sample(population, 2)
-                    parents.append(min(candidates, key=lambda x: x[1])[0])
 
-                ratio = random.random()
-                if ratio < 0.8:
-                    offspring1, cost_1=self.mutation(parents[0])
-                    offspring2, cost_2=self.mutation(parents[1])
+            for _ in range(half_off):
+                # Tournament selection (inline)
+                c1a, c1b = random.sample(pop, 2)
+                p1 = c1a[1] if c1a[0] <= c1b[0] else c1b[1]
+                c2a, c2b = random.sample(pop, 2)
+                p2 = c2a[1] if c2a[0] <= c2b[0] else c2b[1]
+
+                if random.random() <= 0.8:
+                    o1, cost1 = _mutation(p1)
+                    o2, cost2 = _mutation(p2)
                 else:
-                    offspring1, cost_1 = self.crossover(parents[0], parents[1])
-                    offspring2, cost_2 = self.crossover(parents[1], parents[0])
-                
-                next_gen.extend([(offspring1, cost_1), (offspring2, cost_2)])
+                    o1, cost1 = _crossover(p1, p2)
+                    o2, cost2 = _crossover(p2, p1)
 
-            
-            next_gen = [(ind, cost) for ind, cost in sorted(next_gen, key=lambda x: x[1])]  
-            population = next_gen[:self.pop_size]  # mantieni solo i migliori
-        
-            if population[0][1] < best_cost:
-                best_chromo, best_cost = population[0]
-                stagnation_counter = 0
+                next_gen.append((cost1, o1))
+                next_gen.append((cost2, o2))
+
+            # Elitism
+            next_gen.append(pop[0])
+            next_gen.sort(key=lambda x: x[0])
+            pop = next_gen[: self.pop_size]
+
+            if pop[0][0] < best_cost:
+                best_cost, best_chromo = pop[0]
+                max_generation=_gen
+                stagnation = 0
             else:
-                stagnation_counter += 1
-            
-            if stagnation_counter >= 10 and fast:
+                stagnation += 1
+
+            if stagnation >= 10 and fast:
                 break
-        
+        print(f"Max found Generation {max_generation}/{self.generations} ")
         return best_chromo, best_cost
 
-    def solution(self, fast=True):
+    # ──────────────────────────────────────────────────────────────────────
+    #  PUBLIC API  (signature unchanged)
+    # ──────────────────────────────────────────────────────────────────────
+
+    def solution(self, fast: bool = True):
+        if self.alpha == 0 or self.beta == 0:
+            # in questi due casi il costo è lineare, si basa solo sulla distanza 
+            # conviene fare un unico giro  (only one gene)
+            tour = [(city, self.node_gold.get(city, 0.0)) for city in self.cities_to_visit if self.node_gold.get(city, 0.0) > 0]
+            best_path, best_cost = self.optimize_gene_suboptimal(tour)
+            phenotype= self.genotype_to_phenotype([best_path])
+            return  phenotype, best_cost
+
+
         genotype, best_cost = self.run_ga_logic(fast=fast)
-        # if not self.check_feasibility_genotype(genotype):
-        #     print("[ERROR] Final genotype is not feasible!")
-        # gen_cost = self.compute_cost_genotype(genotype)
-        # if abs(gen_cost - best_cost) > 1e-4:
-        #     print(f"[WARNING] Genotype cost {gen_cost:.2f} does not match recorded best cost {best_cost:.2f}")
-        
-        phenotype= self.genotype_to_phenotype(genotype)
-        # if not self.check_feasibility_phenotype(phenotype):
-        #     print("[ERROR] Final phenotype is not feasible!")
-        # phen_cost = self.compute_cost_phenotype(phenotype)
-        # print(f"Final genotype cost: {gen_cost:.2f} | Final phenotype cost: {phen_cost:.2f} | Recorded best cost: {best_cost:.2f}")
-        return phenotype, best_cost 
-    
+        phenotype = self.genotype_to_phenotype(genotype)
+        return phenotype, best_cost

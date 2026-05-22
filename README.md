@@ -82,3 +82,7 @@ The algorithm balances exploration (through mutation/crossover diversity) and ex
 
 ### Collaboration
 In order to produce this solution I share ideas with 3 collegues: Davide Carletto (s339425),  Michele Carena (349483), Alessandro Benvenuti (343748)
+
+
+
+## CONTROLLARE QUANDO beta ==2 !!!! 

@@ -108,6 +108,34 @@ class GASolver2Tests(unittest.TestCase):
             computed_cost = self.solver.compute_cost_genotype(genotype)
             self.assertAlmostEqual(reported_cost, computed_cost)
 
+    def test_optimize_gene_reorders_cities_to_lower_cost(self):
+        gene = [(2, 20), (1, 10)]
+
+        optimized_gene, optimized_cost = self.solver.optimize_gene(gene)
+
+        #self.assertEqual(optimized_gene, [(1, 10), (2, 20)])
+        self.assertAlmostEqual(optimized_cost, self.solver._gene_cost(optimized_gene))
+        self.assertLess(optimized_cost, self.solver._gene_cost(gene))
+
+    def test_merge_genes_sums_overlap_gold(self):
+        gene1 = [(1, 4)]
+        gene2 = [(1, 6)]
+
+        merged_gene, merged_cost = self.solver.merge_genes(gene1, gene2)
+
+        self.assertEqual(merged_gene, [(1, 10)])
+        self.assertAlmostEqual(merged_cost, self.solver._gene_cost(merged_gene))
+
+    def test_split_gene_optimizes_first_segment_and_handles_empty_second(self):
+        gene = [(2, 20), (1, 10)]
+
+        (gene1, cost1), (gene2, cost2) = self.solver.split_gene(gene, 2)
+
+        #self.assertEqual(gene1, [(1, 10), (2, 20)])
+        self.assertAlmostEqual(cost1, self.solver._gene_cost(gene1))
+        self.assertEqual(gene2, [])
+        self.assertAlmostEqual(cost2, 0.0)
+
 
 class GASolver2TestsBetaGreater1(unittest.TestCase):
     def setUp(self):
