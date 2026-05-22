@@ -1,4 +1,5 @@
 import random
+from matplotlib.pylab import beta
 import numpy as np
 import networkx as nx
 
@@ -500,6 +501,9 @@ class GA_Solver:
         if greedy:
             
             greedy_gen, greedy_cost= self._improved_baseline_individual()
+            # validate = self.check_feasibility_genotype(greedy_gen)
+            # if not validate:
+            #     print(f"[INIT] Invalid greedy solution: {greedy_gen}")
             population.append((greedy_gen, greedy_cost))
         for _ in range(self.pop_size - greedy):
             chromosome = ctv[:]
@@ -508,18 +512,20 @@ class GA_Solver:
             if use_mc:
                 genotype, cost = mc(genotype)
             population.append((genotype, cost))
+            # validate = self.check_feasibility_genotype(genotype)
+            # if not validate:
+            #     print(f"[INIT] Invalid random solution: {genotype}")
 
         return population
 
     def _improved_baseline_individual(self):
         """Construct a baseline solution and iteratively merge tours if beneficial."""
-        
         # 1. Generiamo l'ordine di visita iniziale (Nearest Neighbor semplice)
         cities_to_visit = list(self.cities_to_visit)
         # per risparmiare sull'andata del primo viaggio possiamo partire dalla città più lontana dal deposito, poi NN normale
-        current_city = max(range(len(self.cities_to_visit)), key=lambda i: self.dist_matrix[0][i])
+        current_city = max(cities_to_visit, key=lambda c: self.dist_matrix[0][self.node_to_idx[c]])
         cities_to_visit.remove(current_city)
-        ordered_targets = []
+        ordered_targets = [current_city]
         while cities_to_visit:
             next_city = min(cities_to_visit, key=lambda c: self.dist_matrix[current_city][c])
             ordered_targets.append(next_city)
@@ -563,7 +569,61 @@ class GA_Solver:
                     i += 1
         
         return genotype, self.compute_cost_genotype(genotype)
+    
+    def _chunked_star_routes(self) -> list:
+        """When beta >= 1.5, the cost explodes with the weight carried. The baseline already does star routes (base -> city -> base for each city), but it picks up all the gold in one trip. The idea here is to split each city's gold into k smaller chunks and make k trips instead of one. """
+        genotype = []
+        # sort targets by distance from depot (nearest first, to maximize the benefit of chunking)
+        nearest_first = sorted(self.cities_to_visit, key=lambda c: self.dist_matrix[0][self.node_to_idx[c]])
+        
+        for c in nearest_first:
+           
+            dist_base = self.dist_matrix[0][self.node_to_idx[c]]
+            total_gold = self.graph.nodes[c]['gold']
+            if total_gold <= 1e-6: continue
 
+            # dynamic value of k (portion of the gold we take) to handle "big N" scenarios (N=1000)
+            ops_budget = 10000 
+            limit_k = max(5, int(ops_budget / len(self.cities_to_visit)))
+            
+            # k is the number of travel we do for each city, the higher the better. However, for big N we have
+            # to be careful and not extend too much this value because of computational cost
+            start_k = int(np.ceil(total_gold))
+            start_k = min(start_k, limit_k)
+            start_k = max(1, start_k)
+
+            best_k = start_k
+            best_val = float('inf')
+            
+            # test some values for k
+            low_k = max(1, start_k - 5)
+            high_k = min(start_k + 5, limit_k + 5)
+            
+            # simulate the cost for different k 
+            for k in range(low_k, high_k + 1):
+                chunk = total_gold / k
+
+                cost_out = dist_base + (dist_base * self.alpha * 0)**self.beta
+                cost_ret = dist_base + (dist_base * self.alpha * chunk)**self.beta
+                total = k * (cost_out + cost_ret)
+                
+                if total < best_val:
+                    best_val = total
+                    best_k = k
+            
+            portion = total_gold / best_k
+            remaining = total_gold
+            
+            # Use pre-computed base_paths directly (avoids repeated shortest_path calls)
+       
+            for _ in range(best_k):
+                if remaining <= 1e-6: break
+                take = min(portion, remaining)
+                # Outbound: base -> city (gold only at destination)
+                genotype.append([(c, take)])
+                remaining -= take
+                
+        return genotype, self.compute_cost_genotype(genotype)
     # ──────────────────────────────────────────────────────────────────────
     #  GA OPERATORS
     # ──────────────────────────────────────────────────────────────────────
@@ -594,6 +654,9 @@ class GA_Solver:
             (g1, c1), (g2, c2) = self.split_gene(gene, len(gene) // 2)
             new_genotype = genotype[:gene_idx] + [g1, g2] + genotype[gene_idx+1:]
             new_cost = self.compute_cost_genotype(new_genotype)
+            # validate = self.check_feasibility_genotype(new_genotype)
+            # if not validate:
+            #     print(f"[MUTATION] Invalid split: {gene} -> {g1} + {g2}")
             return new_genotype, new_cost
         else:
             # Merge
@@ -605,6 +668,9 @@ class GA_Solver:
             merged_gene, merged_cost = self.merge_genes(g1, g2)
             new_genotype = [g for i, g in enumerate(genotype) if i not in (idx1, idx2)] + [merged_gene]
             new_cost = self.compute_cost_genotype(new_genotype)
+            # validate = self.check_feasibility_genotype(new_genotype)
+            # if not validate:
+            #     print(f"[MUTATION] Invalid merge: {g1} + {g2} -> {merged_gene}")
             return new_genotype, new_cost
 
 
@@ -639,6 +705,11 @@ class GA_Solver:
         genotype, cost = self.evaluate_and_segment(chromosome)
         if self._beta > 1.0:
             genotype, cost = self._multiple_cycle(genotype)
+
+        # validate = self.check_feasibility_genotype(genotype)
+        # if not validate:
+        #     print(f"[CROSSOVER] Invalid crossover: {parent1} + {parent2} -> {genotype}")
+
         return genotype, cost
 
         
@@ -716,7 +787,11 @@ class GA_Solver:
             best_path, best_cost = self.optimize_gene_suboptimal(tour)
             phenotype= self.genotype_to_phenotype([best_path])
             return  phenotype, best_cost
-
+        if self.beta >= 1.5: 
+            # in questo caso non ha senso unire i tour il costo di trasportare oro è troppo grande,
+            genotype, best_cost = self._chunked_star_routes()
+            phenotype= self.genotype_to_phenotype(genotype)
+            return  phenotype, best_cost
 
         genotype, best_cost = self.run_ga_logic(fast=fast)
         phenotype = self.genotype_to_phenotype(genotype)

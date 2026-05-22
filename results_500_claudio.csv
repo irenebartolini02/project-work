@@ -1,5 +1,0 @@
-size,density,alpha,beta, population, generations, offspring,  baseline_cost,ga_cost,improvement %,elapsed_time_min,is_valid,challenge, split_probability
-500,0.2,0.5,0.5,100,100, 20, 7295.59,33420.39,458.09,11.64,True,LOSE,0.75
-500,0.2,0.5,1.0,100,100, 20, 52150.77,53373.79,102.35,1.83,True,LOSE,0.41
-500,0.2,2.0,0.5,100,100, 20, 14180.01,66637.30,469.94,5.66,True,LOSE,0.75
-500,0.2,2.0,1.0,100,100, 20, 207369.56,220595.21,106.38,2.07,True,LOSE,0.10999999999999999

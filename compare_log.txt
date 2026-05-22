@@ -1,7 +1,7 @@
 Total compared (theirs rows): 108
-Davide better count: 52
-Mine better count: 56
-Equal count: 0
+Davide better count: 33
+Mine better count: 74
+Equal count: 1
 Missing in mine: 0
 Missing in theirs: 0
 
@@ -12,17 +12,17 @@ DAVIDE_BETTER: ('10', '0.2', '0.0', '1.0') davide=4.61 mine=5.27
 TIME: ('10', '0.2', '0.0', '1.0') mine faster by 0.001s (0.001s vs 0.000s)
 DAVIDE_BETTER: ('10', '0.2', '0.0', '2.0') davide=4.61 mine=5.27
 TIME: ('10', '0.2', '0.0', '2.0') mine faster by 0.001s (0.001s vs 0.000s)
-MINE_BETTER: ('10', '0.2', '1.0', '0.5') davide=300.02 mine=219.96
+MINE_BETTER: ('10', '0.2', '1.0', '0.5') davide=300.02 mine=213.24
 TIME: ('10', '0.2', '1.0', '0.5') mine faster by 0.002s (0.002s vs 0.000s)
-MINE_BETTER: ('10', '0.2', '1.0', '1.0') davide=4888.5 mine=4886.77
+MINE_BETTER: ('10', '0.2', '1.0', '1.0') davide=4888.5 mine=4887.26
 TIME: ('10', '0.2', '1.0', '1.0') mine faster by 0.002s (0.002s vs 0.000s)
-DAVIDE_BETTER: ('10', '0.2', '1.0', '2.0') davide=12118.43 mine=69188.43
+MINE_BETTER: ('10', '0.2', '1.0', '2.0') davide=12118.43 mine=12118.15
 TIME: ('10', '0.2', '1.0', '2.0') mine faster by 0.008s (0.008s vs 0.000s)
-MINE_BETTER: ('10', '0.2', '2.0', '0.5') davide=417.56 mine=299.42
+MINE_BETTER: ('10', '0.2', '2.0', '0.5') davide=417.56 mine=298.01
 TIME: ('10', '0.2', '2.0', '0.5') mine faster by 0.001s (0.001s vs 0.000s)
 MINE_BETTER: ('10', '0.2', '2.0', '1.0') davide=9768.03 mine=9766.29
 TIME: ('10', '0.2', '2.0', '1.0') davide faster by 0.599s (0.001s vs 0.600s)
-DAVIDE_BETTER: ('10', '0.2', '2.0', '2.0') davide=19409.26 mine=295527.41
+MINE_BETTER: ('10', '0.2', '2.0', '2.0') davide=19409.26 mine=19408.99
 TIME: ('10', '0.2', '2.0', '2.0') mine faster by 0.007s (0.007s vs 0.000s)
 DAVIDE_BETTER: ('10', '0.5', '0.0', '0.5') davide=4.21 mine=4.41
 TIME: ('10', '0.5', '0.0', '0.5') mine faster by 0.002s (0.002s vs 0.000s)
@@ -34,13 +34,13 @@ MINE_BETTER: ('10', '0.5', '1.0', '0.5') davide=140.37 mine=132.78
 TIME: ('10', '0.5', '1.0', '0.5') mine faster by 0.001s (0.001s vs 0.000s)
 MINE_BETTER: ('10', '0.5', '1.0', '1.0') davide=2099.22 mine=2098.32
 TIME: ('10', '0.5', '1.0', '1.0') mine faster by 0.001s (0.001s vs 0.000s)
-DAVIDE_BETTER: ('10', '0.5', '1.0', '2.0') davide=4949.45 mine=19288.0
+MINE_BETTER: ('10', '0.5', '1.0', '2.0') davide=4949.45 mine=4949.17
 TIME: ('10', '0.5', '1.0', '2.0') mine faster by 0.004s (0.004s vs 0.000s)
-MINE_BETTER: ('10', '0.5', '2.0', '0.5') davide=195.66 mine=186.06
+MINE_BETTER: ('10', '0.5', '2.0', '0.5') davide=195.66 mine=185.6
 TIME: ('10', '0.5', '2.0', '0.5') mine faster by 0.002s (0.002s vs 0.000s)
-MINE_BETTER: ('10', '0.5', '2.0', '1.0') davide=4191.74 mine=4191.22
+MINE_BETTER: ('10', '0.5', '2.0', '1.0') davide=4191.74 mine=4190.84
 TIME: ('10', '0.5', '2.0', '1.0') mine faster by 0.002s (0.002s vs 0.000s)
-DAVIDE_BETTER: ('10', '0.5', '2.0', '2.0') davide=7355.94 mine=76569.3
+MINE_BETTER: ('10', '0.5', '2.0', '2.0') davide=7355.94 mine=7355.66
 TIME: ('10', '0.5', '2.0', '2.0') mine faster by 0.006s (0.006s vs 0.000s)
 DAVIDE_BETTER: ('10', '1.0', '0.0', '0.5') davide=2.83 mine=2.91
 TIME: ('10', '1.0', '0.0', '0.5') mine faster by 0.003s (0.003s vs 0.000s)
@@ -48,17 +48,17 @@ DAVIDE_BETTER: ('10', '1.0', '0.0', '1.0') davide=2.83 mine=2.91
 TIME: ('10', '1.0', '0.0', '1.0') mine faster by 0.004s (0.004s vs 0.000s)
 DAVIDE_BETTER: ('10', '1.0', '0.0', '2.0') davide=2.83 mine=2.91
 TIME: ('10', '1.0', '0.0', '2.0') mine faster by 0.003s (0.003s vs 0.000s)
-MINE_BETTER: ('10', '1.0', '1.0', '0.5') davide=119.26 mine=118.82
+MINE_BETTER: ('10', '1.0', '1.0', '0.5') davide=119.26 mine=118.64
 TIME: ('10', '1.0', '1.0', '0.5') mine faster by 0.002s (0.002s vs 0.000s)
-MINE_BETTER: ('10', '1.0', '1.0', '1.0') davide=1871.77 mine=1871.33
+MINE_BETTER: ('10', '1.0', '1.0', '1.0') davide=1871.77 mine=1871.15
 TIME: ('10', '1.0', '1.0', '1.0') mine faster by 0.002s (0.002s vs 0.000s)
-DAVIDE_BETTER: ('10', '1.0', '1.0', '2.0') davide=4484.35 mine=19007.91
+MINE_BETTER: ('10', '1.0', '1.0', '2.0') davide=4484.35 mine=4484.07
 TIME: ('10', '1.0', '1.0', '2.0') mine faster by 0.006s (0.006s vs 0.000s)
-MINE_BETTER: ('10', '1.0', '2.0', '0.5') davide=166.71 mine=166.27
+MINE_BETTER: ('10', '1.0', '2.0', '0.5') davide=166.71 mine=166.08
 TIME: ('10', '1.0', '2.0', '0.5') mine faster by 0.003s (0.003s vs 0.000s)
-MINE_BETTER: ('10', '1.0', '2.0', '1.0') davide=3736.21 mine=3735.77
+MINE_BETTER: ('10', '1.0', '2.0', '1.0') davide=3736.21 mine=3735.59
 TIME: ('10', '1.0', '2.0', '1.0') mine faster by 0.002s (0.002s vs 0.000s)
-DAVIDE_BETTER: ('10', '1.0', '2.0', '2.0') davide=6844.58 mine=82746.46
+MINE_BETTER: ('10', '1.0', '2.0', '2.0') davide=6844.58 mine=6844.3
 TIME: ('10', '1.0', '2.0', '2.0') mine faster by 0.003s (0.003s vs 0.000s)
 DAVIDE_BETTER: ('50', '0.2', '0.0', '0.5') davide=16.58 mine=16.82
 TIME: ('50', '0.2', '0.0', '0.5') mine faster by 0.271s (0.271s vs 0.000s)
@@ -66,159 +66,159 @@ DAVIDE_BETTER: ('50', '0.2', '0.0', '1.0') davide=16.58 mine=16.82
 TIME: ('50', '0.2', '0.0', '1.0') mine faster by 0.427s (0.427s vs 0.000s)
 DAVIDE_BETTER: ('50', '0.2', '0.0', '2.0') davide=16.58 mine=16.82
 TIME: ('50', '0.2', '0.0', '2.0') mine faster by 0.310s (0.310s vs 0.000s)
-MINE_BETTER: ('50', '0.2', '1.0', '0.5') davide=1047.71 mine=866.51
+MINE_BETTER: ('50', '0.2', '1.0', '0.5') davide=1047.71 mine=888.45
 TIME: ('50', '0.2', '1.0', '0.5') davide faster by 0.351s (0.249s vs 0.600s)
-DAVIDE_BETTER: ('50', '0.2', '1.0', '1.0') davide=12885.36 mine=12887.41
+DAVIDE_BETTER: ('50', '0.2', '1.0', '1.0') davide=12885.36 mine=12886.08
 TIME: ('50', '0.2', '1.0', '1.0') davide faster by 0.275s (0.325s vs 0.600s)
-DAVIDE_BETTER: ('50', '0.2', '1.0', '2.0') davide=22370.46 mine=102766.42
-TIME: ('50', '0.2', '1.0', '2.0') davide faster by 7.785s (0.015s vs 7.800s)
-MINE_BETTER: ('50', '0.2', '2.0', '0.5') davide=1462.65 mine=1256.78
+MINE_BETTER: ('50', '0.2', '1.0', '2.0') davide=22370.46 mine=22370.33
+TIME: ('50', '0.2', '1.0', '2.0') mine faster by 0.015s (0.015s vs 0.000s)
+MINE_BETTER: ('50', '0.2', '2.0', '0.5') davide=1462.65 mine=1231.09
 TIME: ('50', '0.2', '2.0', '0.5') davide faster by 0.357s (0.243s vs 0.600s)
-DAVIDE_BETTER: ('50', '0.2', '2.0', '1.0') davide=25728.97 mine=25729.9
+DAVIDE_BETTER: ('50', '0.2', '2.0', '1.0') davide=25728.97 mine=25730.95
 TIME: ('50', '0.2', '2.0', '1.0') davide faster by 0.359s (0.241s vs 0.600s)
-DAVIDE_BETTER: ('50', '0.2', '2.0', '2.0') davide=60404.31 mine=380462.34
-TIME: ('50', '0.2', '2.0', '2.0') davide faster by 6.585s (0.015s vs 6.600s)
+MINE_BETTER: ('50', '0.2', '2.0', '2.0') davide=60404.31 mine=60404.18
+TIME: ('50', '0.2', '2.0', '2.0') mine faster by 0.015s (0.015s vs 0.000s)
 MINE_BETTER: ('50', '0.5', '0.0', '0.5') davide=8.65 mine=8.56
 TIME: ('50', '0.5', '0.0', '0.5') mine faster by 0.447s (0.447s vs 0.000s)
 MINE_BETTER: ('50', '0.5', '0.0', '1.0') davide=8.65 mine=8.56
 TIME: ('50', '0.5', '0.0', '1.0') mine faster by 0.474s (0.474s vs 0.000s)
 MINE_BETTER: ('50', '0.5', '0.0', '2.0') davide=8.65 mine=8.56
 TIME: ('50', '0.5', '0.0', '2.0') mine faster by 0.450s (0.450s vs 0.000s)
-MINE_BETTER: ('50', '0.5', '1.0', '0.5') davide=711.49 mine=679.76
+MINE_BETTER: ('50', '0.5', '1.0', '0.5') davide=711.49 mine=681.74
 TIME: ('50', '0.5', '1.0', '0.5') davide faster by 0.151s (0.449s vs 0.600s)
-DAVIDE_BETTER: ('50', '0.5', '1.0', '1.0') davide=9398.61 mine=9400.56
+DAVIDE_BETTER: ('50', '0.5', '1.0', '1.0') davide=9398.61 mine=9400.48
 TIME: ('50', '0.5', '1.0', '1.0') davide faster by 0.140s (0.460s vs 0.600s)
-DAVIDE_BETTER: ('50', '0.5', '1.0', '2.0') davide=16137.06 mine=78005.6
-TIME: ('50', '0.5', '1.0', '2.0') davide faster by 5.989s (0.011s vs 6.000s)
-MINE_BETTER: ('50', '0.5', '2.0', '0.5') davide=1013.05 mine=941.73
+MINE_BETTER: ('50', '0.5', '1.0', '2.0') davide=16137.06 mine=16136.98
+TIME: ('50', '0.5', '1.0', '2.0') mine faster by 0.011s (0.011s vs 0.000s)
+MINE_BETTER: ('50', '0.5', '2.0', '0.5') davide=1013.05 mine=948.26
 TIME: ('50', '0.5', '2.0', '0.5') mine faster by 0.066s (0.666s vs 0.600s)
-DAVIDE_BETTER: ('50', '0.5', '2.0', '1.0') davide=18769.74 mine=18770.03
+MINE_BETTER: ('50', '0.5', '2.0', '1.0') davide=18769.74 mine=18769.73
 TIME: ('50', '0.5', '2.0', '1.0') mine faster by 0.144s (0.744s vs 0.600s)
-DAVIDE_BETTER: ('50', '0.5', '2.0', '2.0') davide=43254.76 mine=310933.57
-TIME: ('50', '0.5', '2.0', '2.0') davide faster by 5.980s (0.020s vs 6.000s)
+MINE_BETTER: ('50', '0.5', '2.0', '2.0') davide=43254.76 mine=43254.68
+TIME: ('50', '0.5', '2.0', '2.0') mine faster by 0.020s (0.020s vs 0.000s)
 MINE_BETTER: ('50', '1.0', '0.0', '0.5') davide=6.1 mine=5.73
 TIME: ('50', '1.0', '0.0', '0.5') mine faster by 1.112s (1.112s vs 0.000s)
 MINE_BETTER: ('50', '1.0', '0.0', '1.0') davide=6.1 mine=5.73
 TIME: ('50', '1.0', '0.0', '1.0') mine faster by 0.981s (0.981s vs 0.000s)
 MINE_BETTER: ('50', '1.0', '0.0', '2.0') davide=6.1 mine=5.73
 TIME: ('50', '1.0', '0.0', '2.0') mine faster by 0.824s (0.824s vs 0.000s)
-DAVIDE_BETTER: ('50', '1.0', '1.0', '0.5') davide=571.07 mine=573.47
+MINE_BETTER: ('50', '1.0', '1.0', '0.5') davide=571.07 mine=568.13
 TIME: ('50', '1.0', '1.0', '0.5') mine faster by 0.247s (0.847s vs 0.600s)
-DAVIDE_BETTER: ('50', '1.0', '1.0', '1.0') davide=8657.77 mine=8662.32
-TIME: ('50', '1.0', '1.0', '1.0') mine faster by 0.815s (0.815s vs 0.000s)
-DAVIDE_BETTER: ('50', '1.0', '1.0', '2.0') davide=16886.44 mine=87899.95
-TIME: ('50', '1.0', '1.0', '2.0') davide faster by 4.784s (0.016s vs 4.800s)
-MINE_BETTER: ('50', '1.0', '2.0', '0.5') davide=802.13 mine=801.63
+DAVIDE_BETTER: ('50', '1.0', '1.0', '1.0') davide=8657.77 mine=8660.42
+TIME: ('50', '1.0', '1.0', '1.0') mine faster by 0.215s (0.815s vs 0.600s)
+MINE_BETTER: ('50', '1.0', '1.0', '2.0') davide=16886.44 mine=16886.36
+TIME: ('50', '1.0', '1.0', '2.0') mine faster by 0.016s (0.016s vs 0.000s)
+MINE_BETTER: ('50', '1.0', '2.0', '0.5') davide=802.13 mine=797.77
 TIME: ('50', '1.0', '2.0', '0.5') mine faster by 0.237s (0.837s vs 0.600s)
-DAVIDE_BETTER: ('50', '1.0', '2.0', '1.0') davide=17286.4 mine=17289.0
-TIME: ('50', '1.0', '2.0', '1.0') mine faster by 0.839s (0.839s vs 0.000s)
-DAVIDE_BETTER: ('50', '1.0', '2.0', '2.0') davide=47551.59 mine=341784.04
-TIME: ('50', '1.0', '2.0', '2.0') davide faster by 4.187s (0.013s vs 4.200s)
+DAVIDE_BETTER: ('50', '1.0', '2.0', '1.0') davide=17286.4 mine=17288.64
+TIME: ('50', '1.0', '2.0', '1.0') mine faster by 0.239s (0.839s vs 0.600s)
+MINE_BETTER: ('50', '1.0', '2.0', '2.0') davide=47551.59 mine=47551.51
+TIME: ('50', '1.0', '2.0', '2.0') mine faster by 0.013s (0.013s vs 0.000s)
 DAVIDE_BETTER: ('100', '0.2', '0.0', '0.5') davide=20.58 mine=21.11
-TIME: ('100', '0.2', '0.0', '0.5') mine faster by 3.496s (3.496s vs 0.000s)
+TIME: ('100', '0.2', '0.0', '0.5') mine faster by 2.896s (3.496s vs 0.600s)
 DAVIDE_BETTER: ('100', '0.2', '0.0', '1.0') davide=20.58 mine=21.11
 TIME: ('100', '0.2', '0.0', '1.0') mine faster by 3.883s (3.883s vs 0.000s)
 DAVIDE_BETTER: ('100', '0.2', '0.0', '2.0') davide=20.58 mine=21.11
-TIME: ('100', '0.2', '0.0', '2.0') mine faster by 3.879s (3.879s vs 0.000s)
-MINE_BETTER: ('100', '0.2', '1.0', '0.5') davide=1942.17 mine=1599.41
+TIME: ('100', '0.2', '0.0', '2.0') mine faster by 3.279s (3.879s vs 0.600s)
+MINE_BETTER: ('100', '0.2', '1.0', '0.5') davide=1942.17 mine=1623.3
 TIME: ('100', '0.2', '1.0', '0.5') mine faster by 2.196s (3.996s vs 1.800s)
-DAVIDE_BETTER: ('100', '0.2', '1.0', '1.0') davide=25233.49 mine=25238.52
+DAVIDE_BETTER: ('100', '0.2', '1.0', '1.0') davide=25233.49 mine=25239.43
 TIME: ('100', '0.2', '1.0', '1.0') mine faster by 1.701s (3.501s vs 1.800s)
-DAVIDE_BETTER: ('100', '0.2', '1.0', '2.0') davide=60775.62 mine=262691.4
-TIME: ('100', '0.2', '1.0', '2.0') davide faster by 1.185s (0.015s vs 1.200s)
-MINE_BETTER: ('100', '0.2', '2.0', '0.5') davide=2718.77 mine=2249.72
+MINE_BETTER: ('100', '0.2', '1.0', '2.0') davide=60775.62 mine=60775.43
+TIME: ('100', '0.2', '1.0', '2.0') mine faster by 0.015s (0.015s vs 0.000s)
+MINE_BETTER: ('100', '0.2', '2.0', '0.5') davide=2718.77 mine=2255.44
 TIME: ('100', '0.2', '2.0', '0.5') mine faster by 1.810s (3.610s vs 1.800s)
-DAVIDE_BETTER: ('100', '0.2', '2.0', '1.0') davide=50393.06 mine=50398.2
+DAVIDE_BETTER: ('100', '0.2', '2.0', '1.0') davide=50393.06 mine=50398.47
 TIME: ('100', '0.2', '2.0', '1.0') mine faster by 2.221s (4.021s vs 1.800s)
-DAVIDE_BETTER: ('100', '0.2', '2.0', '2.0') davide=212064.01 mine=1165499.84
-TIME: ('100', '0.2', '2.0', '2.0') davide faster by 1.177s (0.023s vs 1.200s)
+MINE_BETTER: ('100', '0.2', '2.0', '2.0') davide=212064.01 mine=212063.82
+TIME: ('100', '0.2', '2.0', '2.0') mine faster by 0.023s (0.023s vs 0.000s)
 MINE_BETTER: ('100', '0.5', '0.0', '0.5') davide=12.3 mine=11.99
 TIME: ('100', '0.5', '0.0', '0.5') mine faster by 6.831s (7.431s vs 0.600s)
 MINE_BETTER: ('100', '0.5', '0.0', '1.0') davide=12.3 mine=11.99
 TIME: ('100', '0.5', '0.0', '1.0') mine faster by 7.188s (7.788s vs 0.600s)
 MINE_BETTER: ('100', '0.5', '0.0', '2.0') davide=12.3 mine=11.99
 TIME: ('100', '0.5', '0.0', '2.0') mine faster by 7.517s (8.117s vs 0.600s)
-MINE_BETTER: ('100', '0.5', '1.0', '0.5') davide=1301.67 mine=1224.78
+MINE_BETTER: ('100', '0.5', '1.0', '0.5') davide=1301.67 mine=1230.35
 TIME: ('100', '0.5', '1.0', '0.5') mine faster by 5.504s (6.704s vs 1.200s)
-DAVIDE_BETTER: ('100', '0.5', '1.0', '1.0') davide=18794.04 mine=18801.33
-TIME: ('100', '0.5', '1.0', '1.0') mine faster by 4.550s (6.350s vs 1.800s)
-DAVIDE_BETTER: ('100', '0.5', '1.0', '2.0') davide=51889.72 mine=197009.71
-TIME: ('100', '0.5', '1.0', '2.0') davide faster by 1.181s (0.019s vs 1.200s)
-MINE_BETTER: ('100', '0.5', '2.0', '0.5') davide=1831.62 mine=1715.93
+DAVIDE_BETTER: ('100', '0.5', '1.0', '1.0') davide=18794.04 mine=18801.37
+TIME: ('100', '0.5', '1.0', '1.0') mine faster by 5.150s (6.350s vs 1.200s)
+MINE_BETTER: ('100', '0.5', '1.0', '2.0') davide=51889.72 mine=51889.71
+TIME: ('100', '0.5', '1.0', '2.0') mine faster by 0.019s (0.019s vs 0.000s)
+MINE_BETTER: ('100', '0.5', '2.0', '0.5') davide=1831.62 mine=1709.28
 TIME: ('100', '0.5', '2.0', '0.5') mine faster by 4.571s (5.771s vs 1.200s)
-DAVIDE_BETTER: ('100', '0.5', '2.0', '1.0') davide=37528.97 mine=37536.03
-TIME: ('100', '0.5', '2.0', '1.0') mine faster by 5.145s (6.345s vs 1.200s)
-DAVIDE_BETTER: ('100', '0.5', '2.0', '2.0') davide=184982.28 mine=766662.74
-TIME: ('100', '0.5', '2.0', '2.0') davide faster by 1.181s (0.019s vs 1.200s)
+DAVIDE_BETTER: ('100', '0.5', '2.0', '1.0') davide=37528.97 mine=37536.21
+TIME: ('100', '0.5', '2.0', '1.0') mine faster by 4.545s (6.345s vs 1.800s)
+MINE_BETTER: ('100', '0.5', '2.0', '2.0') davide=184982.28 mine=184982.27
+TIME: ('100', '0.5', '2.0', '2.0') mine faster by 0.019s (0.019s vs 0.000s)
 MINE_BETTER: ('100', '1.0', '0.0', '0.5') davide=8.87 mine=7.98
 TIME: ('100', '1.0', '0.0', '0.5') mine faster by 9.757s (10.357s vs 0.600s)
 MINE_BETTER: ('100', '1.0', '0.0', '1.0') davide=8.87 mine=7.98
 TIME: ('100', '1.0', '0.0', '1.0') mine faster by 10.208s (10.808s vs 0.600s)
 MINE_BETTER: ('100', '1.0', '0.0', '2.0') davide=8.87 mine=7.98
 TIME: ('100', '1.0', '0.0', '2.0') mine faster by 10.557s (11.157s vs 0.600s)
-DAVIDE_BETTER: ('100', '1.0', '1.0', '0.5') davide=1068.75 mine=1087.59
+DAVIDE_BETTER: ('100', '1.0', '1.0', '0.5') davide=1068.75 mine=1078.18
 TIME: ('100', '1.0', '1.0', '0.5') mine faster by 9.892s (11.692s vs 1.800s)
-DAVIDE_BETTER: ('100', '1.0', '1.0', '1.0') davide=18253.34 mine=18262.02
-TIME: ('100', '1.0', '1.0', '1.0') mine faster by 9.961s (12.361s vs 2.400s)
-DAVIDE_BETTER: ('100', '1.0', '1.0', '2.0') davide=58378.85 mine=217268.03
-TIME: ('100', '1.0', '1.0', '2.0') davide faster by 1.176s (0.024s vs 1.200s)
-DAVIDE_BETTER: ('100', '1.0', '2.0', '0.5') davide=1500.11 mine=1526.86
-TIME: ('100', '1.0', '2.0', '0.5') mine faster by 10.984s (12.184s vs 1.200s)
-DAVIDE_BETTER: ('100', '1.0', '2.0', '1.0') davide=36447.9 mine=36455.05
-TIME: ('100', '1.0', '2.0', '1.0') mine faster by 9.236s (11.036s vs 1.800s)
-DAVIDE_BETTER: ('100', '1.0', '2.0', '2.0') davide=211536.47 mine=864240.51
-TIME: ('100', '1.0', '2.0', '2.0') davide faster by 1.176s (0.024s vs 1.200s)
+DAVIDE_BETTER: ('100', '1.0', '1.0', '1.0') davide=18253.34 mine=18261.65
+TIME: ('100', '1.0', '1.0', '1.0') mine faster by 10.561s (12.361s vs 1.800s)
+MINE_BETTER: ('100', '1.0', '1.0', '2.0') davide=58378.85 mine=58378.84
+TIME: ('100', '1.0', '1.0', '2.0') davide faster by 0.576s (0.024s vs 0.600s)
+DAVIDE_BETTER: ('100', '1.0', '2.0', '0.5') davide=1500.11 mine=1522.12
+TIME: ('100', '1.0', '2.0', '0.5') mine faster by 10.384s (12.184s vs 1.800s)
+DAVIDE_BETTER: ('100', '1.0', '2.0', '1.0') davide=36447.9 mine=36454.48
+TIME: ('100', '1.0', '2.0', '1.0') mine faster by 8.636s (11.036s vs 2.400s)
+MINE_BETTER: ('100', '1.0', '2.0', '2.0') davide=211536.47 mine=211536.45
+TIME: ('100', '1.0', '2.0', '2.0') mine faster by 0.024s (0.024s vs 0.000s)
 MINE_BETTER: ('1000', '0.2', '0.0', '0.5') davide=104.23 mine=63.56
-TIME: ('1000', '0.2', '0.0', '0.5') davide faster by 408.821s (204.379s vs 613.200s)
+TIME: ('1000', '0.2', '0.0', '0.5') davide faster by 104.021s (204.379s vs 308.400s)
 MINE_BETTER: ('1000', '0.2', '0.0', '1.0') davide=104.39 mine=63.56
-TIME: ('1000', '0.2', '0.0', '1.0') davide faster by 435.252s (203.748s vs 639.000s)
+TIME: ('1000', '0.2', '0.0', '1.0') davide faster by 94.452s (203.748s vs 298.200s)
 MINE_BETTER: ('1000', '0.2', '0.0', '2.0') davide=104.23 mine=63.56
-TIME: ('1000', '0.2', '0.0', '2.0') davide faster by 423.148s (204.452s vs 627.600s)
-MINE_BETTER: ('1000', '0.2', '1.0', '0.5') davide=18430.28 mine=12661.27
-TIME: ('1000', '0.2', '1.0', '0.5') mine faster by 44.394s (205.794s vs 161.400s)
-MINE_BETTER: ('1000', '0.2', '1.0', '1.0') davide=195338.08 mine=195313.21
-TIME: ('1000', '0.2', '1.0', '1.0') davide faster by 1.340s (205.060s vs 206.400s)
-MINE_BETTER: ('1000', '0.2', '1.0', '2.0') davide=2514556.32 mine=2216849.55
-TIME: ('1000', '0.2', '1.0', '2.0') davide faster by 160.832s (0.568s vs 161.400s)
-MINE_BETTER: ('1000', '0.2', '2.0', '0.5') davide=25867.8 mine=17777.52
-TIME: ('1000', '0.2', '2.0', '0.5') mine faster by 39.957s (203.757s vs 163.800s)
-MINE_BETTER: ('1000', '0.2', '2.0', '1.0') davide=389959.07 mine=389954.02
-TIME: ('1000', '0.2', '2.0', '1.0') mine faster by 107.981s (203.381s vs 95.400s)
-MINE_BETTER: ('1000', '0.2', '2.0', '2.0') davide=10023650.8 mine=9142138.62
-TIME: ('1000', '0.2', '2.0', '2.0') davide faster by 84.654s (0.546s vs 85.200s)
+TIME: ('1000', '0.2', '0.0', '2.0') davide faster by 99.148s (204.452s vs 303.600s)
+MINE_BETTER: ('1000', '0.2', '1.0', '0.5') davide=18430.28 mine=12690.87
+TIME: ('1000', '0.2', '1.0', '0.5') mine faster by 127.194s (205.794s vs 78.600s)
+MINE_BETTER: ('1000', '0.2', '1.0', '1.0') davide=195338.08 mine=195317.75
+TIME: ('1000', '0.2', '1.0', '1.0') mine faster by 116.260s (205.060s vs 88.800s)
+MINE_BETTER: ('1000', '0.2', '1.0', '2.0') davide=2514556.32 mine=2514556.29
+TIME: ('1000', '0.2', '1.0', '2.0') davide faster by 77.432s (0.568s vs 78.000s)
+MINE_BETTER: ('1000', '0.2', '2.0', '0.5') davide=25867.8 mine=17821.33
+TIME: ('1000', '0.2', '2.0', '0.5') mine faster by 123.357s (203.757s vs 80.400s)
+DAVIDE_BETTER: ('1000', '0.2', '2.0', '1.0') davide=389959.07 mine=389961.48
+TIME: ('1000', '0.2', '2.0', '1.0') mine faster by 116.981s (203.381s vs 86.400s)
+MINE_BETTER: ('1000', '0.2', '2.0', '2.0') davide=10023650.8 mine=10023650.77
+TIME: ('1000', '0.2', '2.0', '2.0') davide faster by 103.854s (0.546s vs 104.400s)
 MINE_BETTER: ('1000', '0.5', '0.0', '0.5') davide=49.17 mine=38.65
-TIME: ('1000', '0.5', '0.0', '0.5') davide faster by 232.417s (206.183s vs 438.600s)
+TIME: ('1000', '0.5', '0.0', '0.5') davide faster by 335.617s (206.183s vs 541.800s)
 MINE_BETTER: ('1000', '0.5', '0.0', '1.0') davide=49.24 mine=38.65
-TIME: ('1000', '0.5', '0.0', '1.0') davide faster by 196.524s (206.676s vs 403.200s)
+TIME: ('1000', '0.5', '0.0', '1.0') davide faster by 320.724s (206.676s vs 527.400s)
 MINE_BETTER: ('1000', '0.5', '0.0', '2.0') davide=49.52 mine=38.65
-TIME: ('1000', '0.5', '0.0', '2.0') davide faster by 178.823s (207.577s vs 386.400s)
-MINE_BETTER: ('1000', '0.5', '1.0', '0.5') davide=14048.68 mine=10660.37
-TIME: ('1000', '0.5', '1.0', '0.5') mine faster by 21.817s (209.617s vs 187.800s)
-DAVIDE_BETTER: ('1000', '0.5', '1.0', '1.0') davide=193100.79 mine=193135.04
-TIME: ('1000', '0.5', '1.0', '1.0') davide faster by 24.274s (210.326s vs 234.600s)
-MINE_BETTER: ('1000', '0.5', '1.0', '2.0') davide=3134787.8 mine=2423645.06
-TIME: ('1000', '0.5', '1.0', '2.0') davide faster by 188.980s (1.220s vs 190.200s)
-MINE_BETTER: ('1000', '0.5', '2.0', '0.5') davide=19334.11 mine=15005.69
-TIME: ('1000', '0.5', '2.0', '0.5') mine faster by 16.625s (206.825s vs 190.200s)
-DAVIDE_BETTER: ('1000', '0.5', '2.0', '1.0') davide=385574.12 mine=385637.48
-TIME: ('1000', '0.5', '2.0', '1.0') davide faster by 10.083s (208.917s vs 219.000s)
-MINE_BETTER: ('1000', '0.5', '2.0', '2.0') davide=12504956.63 mine=9640798.11
-TIME: ('1000', '0.5', '2.0', '2.0') davide faster by 189.590s (1.210s vs 190.800s)
+TIME: ('1000', '0.5', '0.0', '2.0') davide faster by 322.223s (207.577s vs 529.800s)
+MINE_BETTER: ('1000', '0.5', '1.0', '0.5') davide=14048.68 mine=10690.42
+TIME: ('1000', '0.5', '1.0', '0.5') davide faster by 19.583s (209.617s vs 229.200s)
+DAVIDE_BETTER: ('1000', '0.5', '1.0', '1.0') davide=193100.79 mine=193138.26
+TIME: ('1000', '0.5', '1.0', '1.0') davide faster by 78.274s (210.326s vs 288.600s)
+MINE_BETTER: ('1000', '0.5', '1.0', '2.0') davide=3134787.8 mine=3134787.77
+TIME: ('1000', '0.5', '1.0', '2.0') davide faster by 224.380s (1.220s vs 225.600s)
+MINE_BETTER: ('1000', '0.5', '2.0', '0.5') davide=19334.11 mine=15017.47
+TIME: ('1000', '0.5', '2.0', '0.5') davide faster by 37.375s (206.825s vs 244.200s)
+DAVIDE_BETTER: ('1000', '0.5', '2.0', '1.0') davide=385574.12 mine=385641.21
+TIME: ('1000', '0.5', '2.0', '1.0') davide faster by 49.683s (208.917s vs 258.600s)
+MINE_BETTER: ('1000', '0.5', '2.0', '2.0') davide=12504956.63 mine=12504956.61
+TIME: ('1000', '0.5', '2.0', '2.0') davide faster by 256.790s (1.210s vs 258.000s)
 MINE_BETTER: ('1000', '1.0', '0.0', '0.5') davide=26.62 mine=26.18
-TIME: ('1000', '1.0', '0.0', '0.5') davide faster by 334.599s (213.801s vs 548.400s)
+TIME: ('1000', '1.0', '0.0', '0.5') davide faster by 524.799s (213.801s vs 738.600s)
 MINE_BETTER: ('1000', '1.0', '0.0', '1.0') davide=26.62 mine=26.18
-TIME: ('1000', '1.0', '0.0', '1.0') davide faster by 328.452s (213.348s vs 541.800s)
+TIME: ('1000', '1.0', '0.0', '1.0') davide faster by 468.852s (213.348s vs 682.200s)
 MINE_BETTER: ('1000', '1.0', '0.0', '2.0') davide=26.62 mine=26.18
-TIME: ('1000', '1.0', '0.0', '2.0') davide faster by 329.173s (213.227s vs 542.400s)
-MINE_BETTER: ('1000', '1.0', '1.0', '0.5') davide=10911.2 mine=9617.0
-TIME: ('1000', '1.0', '1.0', '0.5') davide faster by 146.391s (213.009s vs 359.400s)
-DAVIDE_BETTER: ('1000', '1.0', '1.0', '1.0') davide=192516.2 mine=192795.23
-TIME: ('1000', '1.0', '1.0', '1.0') davide faster by 1600.473s (215.127s vs 1815.600s)
-MINE_BETTER: ('1000', '1.0', '1.0', '2.0') davide=3850030.3 mine=3121270.78
-TIME: ('1000', '1.0', '1.0', '2.0') davide faster by 1161.736s (2.264s vs 1164.000s)
-MINE_BETTER: ('1000', '1.0', '2.0', '0.5') davide=15303.37 mine=13604.56
-TIME: ('1000', '1.0', '2.0', '0.5') davide faster by 426.626s (211.774s vs 638.400s)
-DAVIDE_BETTER: ('1000', '1.0', '2.0', '1.0') davide=384722.07 mine=385000.59
-TIME: ('1000', '1.0', '2.0', '1.0') davide faster by 443.770s (219.830s vs 663.600s)
-MINE_BETTER: ('1000', '1.0', '2.0', '2.0') davide=15365933.11 mine=13478704.11
-TIME: ('1000', '1.0', '2.0', '2.0') davide faster by 503.299s (2.501s vs 505.800s)
+TIME: ('1000', '1.0', '0.0', '2.0') davide faster by 434.173s (213.227s vs 647.400s)
+MINE_BETTER: ('1000', '1.0', '1.0', '0.5') davide=10911.2 mine=9593.52
+TIME: ('1000', '1.0', '1.0', '0.5') davide faster by 229.791s (213.009s vs 442.800s)
+DAVIDE_BETTER: ('1000', '1.0', '1.0', '1.0') davide=192516.2 mine=192794.43
+TIME: ('1000', '1.0', '1.0', '1.0') davide faster by 612.873s (215.127s vs 828.000s)
+EQUAL: ('1000', '1.0', '1.0', '2.0') both=3850030.3
+TIME: ('1000', '1.0', '1.0', '2.0') davide faster by 433.336s (2.264s vs 435.600s)
+MINE_BETTER: ('1000', '1.0', '2.0', '0.5') davide=15303.37 mine=13465.38
+TIME: ('1000', '1.0', '2.0', '0.5') davide faster by 223.826s (211.774s vs 435.600s)
+DAVIDE_BETTER: ('1000', '1.0', '2.0', '1.0') davide=384722.07 mine=384998.89
+TIME: ('1000', '1.0', '2.0', '1.0') davide faster by 301.570s (219.830s vs 521.400s)
+MINE_BETTER: ('1000', '1.0', '2.0', '2.0') davide=15365933.11 mine=15365933.1
+TIME: ('1000', '1.0', '2.0', '2.0') davide faster by 528.499s (2.501s vs 531.000s)
