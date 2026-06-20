@@ -148,3 +148,13 @@ phenotype, cost = solver.solution(fast=True)
 print(cost)
 print(phenotype)
 ```
+
+
+# Cose da fare: 
+Cambiare GA_solver a Solver e basta 
+Scrivere il Readme bene spiegando le diverse soluzioni 
+Pulire la classe dalle funzioni non utilizzate o vecchie 
+
+NOTA BENE: nel caso beta > 1 uso solo i full_path che partono da zero così c'è troppo overhead.
+
+Rirannare tutte le compinazioni 

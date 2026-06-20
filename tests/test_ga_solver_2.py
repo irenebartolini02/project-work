@@ -2,6 +2,7 @@ import math
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import networkx as nx
 import numpy as np
@@ -48,6 +49,34 @@ class FakeProblemBetaGreater1(FakeProblem):
     def __init__(self):
         super().__init__()
         self._beta = 2.0
+
+
+class FakeProblemMergeAllPossible:
+    def __init__(self):
+        graph = nx.Graph()
+        graph.add_node(0, gold=0.0, pos=(0.0, 0.0))
+        graph.add_node(1, gold=0.3, pos=(1.0, 0.0))
+        graph.add_node(2, gold=0.7, pos=(2.0, 0.0))
+
+        graph.add_edge(0, 1, dist=1.0)
+        graph.add_edge(1, 2, dist=1.0)
+        graph.add_edge(2, 0, dist=1.0)
+
+        self._graph = graph
+        self._alpha = 1.0
+        self._beta = 1.0
+
+    @property
+    def graph(self):
+        return nx.Graph(self._graph)
+
+    @property
+    def alpha(self):
+        return self._alpha
+
+    @property
+    def beta(self):
+        return self._beta
 
 
 class GASolver2Tests(unittest.TestCase):
@@ -126,6 +155,56 @@ class GASolver2Tests(unittest.TestCase):
         self.assertEqual(merged_gene, [(1, 10)])
         self.assertAlmostEqual(merged_cost, self.solver._gene_cost(merged_gene))
 
+    def test_merge_all_possible_preserves_gold_with_duplicate_city_sets(self):
+        problem = FakeProblemMergeAllPossible()
+        solver = GA_Solver(problem)
+
+        genotype = [
+            [(1, 0.1)],
+            [(1, 0.2)],
+            [(2, 0.3)],
+            [(2, 0.4)],
+        ]
+
+        merged_genotype, merged_cost = solver.merge_all_possible(
+            [list(gene) for gene in genotype],
+            max_neighbors=5,
+        )
+
+        self.assertTrue(solver.check_feasibility_genotype(merged_genotype))
+        self.assertAlmostEqual(merged_cost, solver.compute_cost_genotype(merged_genotype))
+
+        collected = {1: 0.0, 2: 0.0}
+        for gene in merged_genotype:
+            for city, gold in gene:
+                if city in collected:
+                    collected[city] += gold
+
+        self.assertAlmostEqual(collected[1], 0.3)
+        self.assertAlmostEqual(collected[2], 0.7)
+
+    def test_hill_climber_merges_duplicate_gene_families_after_successful_merge(self):
+        problem = FakeProblem()
+        solver = GA_Solver(problem)
+
+        genotype = [
+            [(1, 4)],
+            [(1, 6)],
+            [(2, 7)],
+            [(2, 8)],
+        ]
+
+        def fake_merge_genes(gene1, gene2):
+            return list(gene1) + list(gene2), 0.0
+
+        with patch("src.GA_solver_2.random.sample", side_effect=lambda population, k: [population[0], population[2]]), \
+             patch.object(solver, "merge_genes", side_effect=fake_merge_genes):
+            optimized_genotype, optimized_cost = solver.hill_climber_optimize([list(gene) for gene in genotype], max_iterations=1)
+
+        self.assertEqual(len(optimized_genotype), 2)
+        self.assertTrue(all(len(gene) == 2 for gene in optimized_genotype))
+        self.assertAlmostEqual(optimized_cost, solver.compute_cost_genotype(optimized_genotype))
+
     def test_split_gene_optimizes_first_segment_and_handles_empty_second(self):
         gene = [(2, 20), (1, 10)]
 
@@ -159,6 +238,45 @@ class GASolver2TestsBetaGreater1(unittest.TestCase):
     def test_multiple_cycle_cost_matches_compute(self):
         segmented_genotype, reported_cost = self.solver._multiple_cycle(self.genotype)
         self.assertAlmostEqual(reported_cost, self.solver.compute_cost_genotype(segmented_genotype))
+
+
+class GASolver2AdaptiveSplitTests(unittest.TestCase):
+    def setUp(self):
+        self.problem = FakeProblemBetaGreater1()
+        self.solver = GA_Solver(self.problem)
+
+    def test_generate_solution_with_adaptive_split_returns_feasible_phenotype(self):
+        np.random.seed(5)
+
+        phenotype, reported_cost = self.solver._generate_solution_with_adaptive_split(max_search=20)
+
+        self.assertTrue(self.solver.check_feasibility_phenotype(phenotype))
+        self.assertFalse(math.isinf(reported_cost))
+        self.assertAlmostEqual(reported_cost, self.solver.compute_cost_phenotype(phenotype))
+
+        gold_collected = {}
+        for city, gold in phenotype:
+            if city != 0:
+                gold_collected[city] = gold_collected.get(city, 0.0) + gold
+
+        for city in self.solver.cities_to_visit:
+            expected_gold = self.solver.graph.nodes[city].get('gold', 0)
+            self.assertAlmostEqual(gold_collected.get(city, 0.0), expected_gold)
+
+    def test_generate_solution_with_adaptive_split_keeps_return_path_structure(self):
+        def fake_refinement(city, total_gold, max_search):
+            if city == 1:
+                return 2, 0.0, [1, 4, 0]
+            return 1, 0.0, [2, 3, 0]
+
+        with patch.object(self.solver, "_adaptive_split_with_refinement", side_effect=fake_refinement):
+            phenotype, reported_cost = self.solver._generate_solution_with_adaptive_split(max_search=20)
+
+        self.assertTrue(self.solver.check_feasibility_phenotype(phenotype))
+        self.assertAlmostEqual(reported_cost, self.solver.compute_cost_phenotype(phenotype))
+        self.assertEqual(phenotype.count((1, self.solver.graph.nodes[1]['gold'] / 2)), 2)
+        self.assertIn((4, 0), phenotype)
+        self.assertIn((3, 0), phenotype)
 
 
 class GASolver2ProblemIntegrationTests(unittest.TestCase):
