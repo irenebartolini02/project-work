@@ -15,74 +15,28 @@ where:
 
 The thief can return to the depot at any point to unload gold (resetting the weight to zero) before continuing the journey. The objective is to collect all available gold while minimizing the total travel cost.
 
-## Solution Approach
+## Project structure
 
-The solution is based on a **Genetic Algorithm (GA)** with specialized operators designed for this routing problem with weight constraints.
-
-### Core Components
-
-1. **Genotype Encoding**  
-   Each individual is represented as a sequence of `(city, gold)` tuples, where the route may include multiple returns to the depot (0, 0) to unload collected gold.
-
-2. **Greedy Decoder (`_evaluate_and_segment`)**  
-   Given a  (random) city target order, this decoder greedily decides at each step whether to:
-   - Go directly to the next city
-   - Return to the depot to unload, then proceed to the next city  
-   
-   It chooses the option with lower incremental cost.
-
-3. **Initialization**  
-   The initial population combines:
-   - **Greedy individuals**: Random permutations decoded with the greedy strategy
-   - **Improved Baseline**: Starting from the baseline, adiacent tours are merged if it's favorable
-
-4. **Genetic Operators**
-
-   - **Mutation**: Two strategies based on problem parameters:
-     - **Tour merging**: Attempts to merge two consecutive tours into one if cost-effective
-     - **Tour re-decoding**: Splits the route into segments and re-applies the greedy decoder to each segment for local optimization
-     The choice between these two strategies is **dynamically tuned** based on problem parameters:
-      - Low `beta` (distance-dominant): favors tour merging
-      - High `beta` (weight-dominant): favors tour splitting and re-decoding   
-      - If `beta` ≈ 1: favors tour merging for `alpha` < 1
-
-   The threshold is computed dynamically at each mutation to balance exploration and exploitation.
-    
-   - **Crossover**: Combines two parents by taking tours from the first parent to cover approximately half the cities, then completes gold collection using tours from the second parent (re-optimized)
-
-5. **Selection**  
-   Tournament selection with elitism: only the best individuals survive to the next generation.
-   The individual are sorted in base of their cost and only the first :population size are kept.
-
-
-
-### Key Algorithmic Features
-
-- **Multiple Cycle Strategy**: When weight penalties are severe, tours are split into multiple lighter trips collecting fractional gold amounts per visit (`_multiple_cycle`)
-- **Improved Baseline**: Starts from a nearest-neighbor baseline and iteratively merges adjacent tours if beneficial (`_improved_baseline_individual`)
-
-### Parameters
-
-Parameters are dynamically adjusted based on `beta` and `n_cities` to balance solution quality and computation time:
-
-- When `beta` is large and tours are split into many light trips, computation time grows significantly with the number of cities.
-- For such cases, smaller populations are used to remain tractable.
-- When `beta` is small, larger populations provide better exploration.
-
-
-**Configurable parameters:**
-- `pop_size`: Population size
-- `generations`: Number of GA iterations
-- `offprint`: Number of offspring generated per generation
-
-Optionally, a boolean flag can be passed to `solution()` to enable **stagnation control**, which stops the GA early if the best cost does not improve for more than 10 consecutive generations.
-
-The algorithm balances exploration (through mutation/crossover diversity) and exploitation (through greedy decoding and local optimization) to find high-quality solutions across different problem configurations. 
+- `src/`: Solver implementations and core project code.
+	- `Solver.py`: Main Genetic Algorithm solver (`Solver`) and adaptive-split logic.
+	- `utils.py`: Utility functions used throughout the codebase.
+- `tests/`: Unit and integration tests (uses `unittest`). Key file: `tests/test_solver.py`.
+- `experiments.ipynb`: Jupyter notebook for experiments, visualizations and ad-hoc runs.
+- `Problem.py`: Problem model and input parsing helpers (defines the problem instance API).
+- `base_requirements.txt`: List of Python dependencies required for development and testing.
+- `s345905.py`: Auxiliary script (student/assignment related) and quick-run utilities.
+- `all_configurations_results.csv`: Aggregated results from parameter sweeps and experiments. 
 
 
 ### Collaboration
-In order to produce this solution I share ideas with 3 collegues: Davide Carletto (s339425),  Michele Carena (349483), Alessandro Benvenuti (343748)
+In order to produce this solution I share ideas with 3 collegues: Davide Carletto (s339425),  Michele Carena (349483), Alessandro Benvenuti (343748). 
 
 
+# Cose da fare: 
+ 
+Scrivere il Readme bene spiegando le diverse soluzioni 
+Pulire la classe dalle funzioni non utilizzate o vecchie 
 
-## CONTROLLARE QUANDO beta ==2 !!!! 
+NOTA BENE: nel caso beta > 1 uso solo i full_path che partono da zero così c'è troppo overhead.
+
+Rurannare tutte le compinazioni 

@@ -4,11 +4,11 @@ from matplotlib.pylab import beta
 import numpy as np
 import networkx as nx
 from scipy.spatial import KDTree
+from src.utils import compute_ga_params
 
+class Solver:
 
-class GA_Solver:
-
-    def __init__(self, problem, pop_size=50, generations=100, offprint=20):
+    def __init__(self, problem):
         self.prob = problem
         self.graph = problem.graph
         self.alpha = problem.alpha
@@ -66,9 +66,6 @@ class GA_Solver:
         self._alpha = float(self.alpha)
         self._beta  = float(self.beta)
 
-        self.pop_size    = pop_size
-        self.generations = generations
-        self.offprint    = offprint
 
         beta_factor = 0.5 * (1.0 - self.prob.beta)
         alpha_influence = 0.2 * (0.05 - self.prob.alpha) if 0.9 <= self.prob.beta <= 1.1 else 0
@@ -289,155 +286,12 @@ class GA_Solver:
         genotype.append(route)
         return genotype, total_cost
 
-    # ──────────────────────────────────────────────────────────────────────
-    #  MULTIPLE-CYCLE OPTIMISER
-    # ──────────────────────────────────────────────────────────────────────
-
-    # def _multiple_cycle(self, genotype: list) -> tuple:
-    #     """Split tours into multiple lighter trips when beneficial."""
-    #     new_genotype = []
-    #     gc = self._gene_cost   # local alias
-
-    #     for tour in genotype:
-    #         cost     = gc(tour)
-    #         min_gold = min(w for _, w in tour)
-    #         best_factor = 1
-
-    #         for i in range(2, int(min_gold) + 1):
-    #             single_trip = [(c, w // i) for c, w in tour]
-    #             c_single    = gc(single_trip)
-    #             approx_cost = c_single * i
-
-    #             if approx_cost < cost:
-    #                 cost        = approx_cost
-    #                 best_factor = i
-    #             else:
-    #                 break   # monotone
-
-    #         if best_factor == 1:
-    #             new_genotype.append(tour)
-    #         else:
-    #             for j in range(best_factor):
-    #                 remainders = [0] * len(tour)
-    #                 if j == best_factor - 1:
-    #                     remainders = [w % best_factor for _, w in tour]
-    #                 new_genotype.append(
-    #                     [(c, w // best_factor + r)
-    #                      for (c, w), r in zip(tour, remainders)]
-    #                 )
-
-    #     return new_genotype, self.compute_cost_genotype(new_genotype)
-        
-
-    def _multiple_cycle(self, genotype: list, max_search=1000) -> tuple:
-        """
-        Divide ogni gene in K trip portando una frazione di gold per citta'
-        ad ogni passaggio. Versione corretta per gold sia intero che FLOAT
-        (necessario perche' i geni in input possono provenire da una divisione
-        precedente, es. da generate_adaptive_split o da una chiamata pregressa
-        di questa stessa funzione).
-
-        FIX rispetto alla versione precedente:
-
-        1. K_max vincolato a min_gold (bug dell'esplosione del genotype)
-        Senza questo vincolo, un gene con gold gia' piccolo (es. 1.0, frutto
-        di una divisione precedente) veniva ulteriormente frammentato fino
-        a max_search=1000 trip da gold<1, facendo esplodere la dimensione
-        del genotype (osservato: 9021 -> 28126 elementi tra due chiamate).
-        Sotto 1 unita' di oro per trip non ha senso fisico continuare a
-        dividere: il limite naturale e' min_gold_int = floor(min(gold nel gene)).
-
-        2. Distribuzione bilanciata ESATTA via somma telescopica
-        La versione precedente usava divmod(w, K) assumendo w intero.
-        Con w FLOAT (es. 777.63), divmod produce un resto r anch'esso float
-        (es. 2.63): la condizione "j < r" con j intero conta male i trip e
-        la parte frazionaria di r viene persa, rompendo la conservazione
-        del gold (bug osservato: "city 1 expected 777.63, got 800.00").
-        La somma telescopica garantisce SEMPRE somma esatta, sia per gold
-        intero che float:
-            cumulative_target += w / K
-            part = cumulative_target - cumulative_assigned
-        perche' e' una somma a telescopio: la somma di tutte le `part` e'
-        matematicamente identica a w, senza arrotondamenti residui.
-        """
-        beta = self._beta
-        gc   = self._gene_cost
-
-        # ── Early exit: per beta <= 1 K=1 e' sempre ottimale ─────────────
-        if beta <= 1.0:
-            return genotype, self.compute_cost_genotype(genotype)
-
-        def make_trips_balanced_exact(tour, K):
-            """Distribuisce ogni citta' del gene in K trip con somma esatta."""
-            trips = [[] for _ in range(K)]
-            for c, w in tour:
-                cumulative_target = 0.0
-                cumulative_assigned = 0.0
-                for j in range(K):
-                    cumulative_target += w / K
-                    part = cumulative_target - cumulative_assigned
-                    trips[j].append((c, part))
-                    cumulative_assigned += part
-            return trips
-
-        new_genotype: list = []
-
-        for tour in genotype:
-            if not tour:
-                continue
-
-            # ── Limite fisico: K non può superare il gold minimo nel gene ───
-            # Sotto 1 unità di oro per trip la divisione non ha più senso
-            # (e su gold già frazionario da chiamate precedenti, evita di
-            # rifrantumare all'infinito un trip già minimale).
-            min_gold = min(w for _, w in tour)
-            if min_gold <= 1.0:
-                new_genotype.append(tour)
-                continue
-
-            K_max = min(max_search, int(min_gold))
-            if K_max <= 1:
-                new_genotype.append(tour)
-                continue
-
-            # ── f(K) con gold float: perfettamente convessa per beta > 1 ──
-            def f(K: int) -> float:
-                return K * gc([(c, w / K) for c, w in tour])
-
-            # ── Binary search del minimo su [1, K_max] ────────────────────
-            low, high = 1, K_max
-            while low < high:
-                mid = (low + high) // 2
-                if f(mid) <= f(mid + 1):
-                    high = mid
-                else:
-                    low = mid + 1
-            best_K = low
-
-            # Controlla i vicini per robustezza su plateau
-            best_cost_f = f(best_K)
-            for K_cand in (best_K - 1, best_K + 1):
-                if 1 <= K_cand <= K_max:
-                    c = f(K_cand)
-                    if c < best_cost_f:
-                        best_cost_f = c
-                        best_K = K_cand
-
-            # ── Costruzione dei K* trip reali con somma esatta ─────────────
-            if best_K == 1:
-                new_genotype.append(tour)
-            else:
-                new_genotype.extend(make_trips_balanced_exact(tour, best_K))
-
-        return new_genotype, self.compute_cost_genotype(new_genotype)
-
-
     
     # ──────────────────────────────────────────────────────────────────────
     #  GENE OPTIMIZER 
     # ──────────────────────────────────────────────────────────────────────
 
-    # NOTA: testare ogni permutazione è troppo COSTOSO
+    # NOTE: testing every permutation is too expensive.
     def optimize_gene_optimal(self, gene: list) -> tuple:
         """
         Optimize a single gene by trying all permutations of its cities.
@@ -463,9 +317,9 @@ class GA_Solver:
 
     def optimize_gene_suboptimal(self, gene):
         """
-        FARTHES INSERTION heuristic for TSP applied to a single gene.
-        Costruisce un loop partendo dalle città più lontane.
-        Ottimo per evitare incroci senza calcoli pesanti.
+        Farthest-insertion heuristic for TSP applied to a single gene.
+        It builds a loop starting from the farthest cities.
+        It is good at avoiding crossings without heavy computation.
         """
         if not gene:
             return [], 0.0
@@ -527,7 +381,7 @@ class GA_Solver:
         Merge two genes into one by concatenating their cities and summing gold.
         Returns the merged gene and its cost.
         """
-        # se una o più città compaiono in entrambi i geni, somma l'oro e mantieni una sola occorrenza
+        # If one or more cities appear in both genes, sum the gold and keep only one occurrence.
         g1_cities = [ c for c, g in gene1 ]
         g2_cities = [ c for c, g in gene2 ]
 
@@ -572,7 +426,7 @@ class GA_Solver:
         When the cost depends only on the distance and not on the gold carried, we can use the precomputed shortest paths.
         """
         cities = [city for city in self.cities_to_visit if self.node_gold.get(city, 0.0) > 0]
-        # ordinare le città in ordine crescente si distanza dalla precedente 
+        # Order the cities by increasing distance from the previous one.
 
         start= 0
         next_city= min(cities, key=lambda city: self.dist_matrix[self.node_to_idx[start]][self.node_to_idx[city]])
@@ -617,13 +471,9 @@ class GA_Solver:
         eas    = self.evaluate_and_segment
         use_mc = self.beta > 1.0
 
-        # first chromosome is the greedy solution (sorted Neirest Neighbour based on distance from depot)
-
-        # chromosome = self._greedy_solution()
-        # genotype, cost = eas(chromosome)
         greedy = 0
         if self.prob.beta >= 0.5:
-            # se beta < 0.5 partire dalla baseline è sconveniente
+            # If beta < 0.5, starting from the baseline is not convenient.
             greedy+=1      
             greedy_gen, greedy_cost= self._improved_baseline_individual()
             population.append((greedy_gen, greedy_cost))
@@ -639,17 +489,15 @@ class GA_Solver:
             if use_mc:
                 genotype, cost = mc(genotype)
             population.append((genotype, cost))
-            # validate = self.check_feasibility_genotype(genotype)
-            # if not validate:
-            #     print(f"[INIT] Invalid random solution: {genotype}")
+
 
         return population
 
     def _improved_baseline_individual(self):
-        """Construct a baseline solution and iteratively merge tours if beneficial."""
-        # 1. Generiamo l'ordine di visita iniziale (Nearest Neighbor semplice)
+        """Construct a baseline solution and iteratively merge tours when beneficial."""
+        # 1. Build the initial visit order (simple nearest-neighbor).
         cities_to_visit = list(self.cities_to_visit)
-        # per risparmiare sull'andata del primo viaggio possiamo partire dalla città più lontana dal deposito, poi NN normale
+        # To save on the outbound leg of the first trip, start from the city farthest from the depot, then use normal NN.
         current_city = max(cities_to_visit, key=lambda c: self.dist_matrix[0][self.node_to_idx[c]])
         cities_to_visit.remove(current_city)
         ordered_targets = [current_city]
@@ -659,8 +507,8 @@ class GA_Solver:
             cities_to_visit.remove(next_city)
             current_city = next_city
 
-        # 2. Creiamo i tour iniziali: ogni città è un tour Deposito -> Target -> Deposito
-        # Memorizziamo i tour COMPLETI (incluso lo zero iniziale e finale)
+        # 2. Create the initial tours: each city is a Depot -> Target -> Depot trip.
+        # Store the COMPLETE tours (including the initial and final zero).
         genotype = []
     
         for target in ordered_targets:
@@ -670,7 +518,7 @@ class GA_Solver:
             
 
 
-        # 3. Iterative Merge
+        # 3. Iterative merge.
         changed = True
         while changed:
             changed = False
@@ -679,231 +527,163 @@ class GA_Solver:
                 gene_a = genotype[i]
                 gene_b = genotype[i+1]
                 
-                # Calcoliamo i costi separati
+                # Compute the separate costs.
                 cost_a = self._gene_cost(gene_a)
                 cost_b = self._gene_cost(gene_b)
                 
-                # Proviamo il merge
-                # NOTA: Assicurati che _merge_two_tours accetti tour che iniziano/finiscono con (0,0)
+                # Try the merge.
+                # NOTE: Make sure _merge_two_tours accepts tours that start/end with (0,0).
                 merged_gene, merged_cost = self.merge_genes(gene_a, gene_b)
                 
                 if merged_cost < (cost_a + cost_b):
                     genotype[i] = merged_gene
                     genotype.pop(i + 1)
                     changed = True
-                    # Non incrementiamo i per ricontrollare il nuovo tour con il suo prossimo vicino
+                    # Do not increment i so we can re-check the new tour against its next neighbor.
                 else:
                     i += 1
         
         return genotype, self.compute_cost_genotype(genotype)
     
-    # def merge_all_possible(self, genotype):
-    #     """
-    #     Merge all the genes in the genotype iteratively until no further merge is beneficial.
-    #     Checks all possible pairs (all-to-all), not just adjacent ones.
-    #     """
-    #     changed = True
-    #     def gene_contains_gene(g1, g2):
-    #         """Check if gene g1 contains any city from gene g2."""
-    #         # se l'intersezione delle città è non vuota, consideriamo i geni come "condividenti" e non li uniamo (già ottimizzati)
-    #         return any(c == city for c, _ in g1 for city, _ in g2)
-    #     while changed:
-    #         changed = False
-    #         n = len(genotype)
-            
-    #         # Doppio ciclo per testare ogni possibile coppia (i, j) con i < j
-    #         for i in range(n):
-    #             for j in range(i + 1, n):
-    #                 gene_a = genotype[i]
-    #                 gene_b = genotype[j]
-    #                 if gene_contains_gene(gene_a, gene_b):
-    #                     continue  
+    ##____________________________________________________________________________________
 
-    #                 cost_a = self._gene_cost(gene_a)
-    #                 cost_b = self._gene_cost(gene_b)
-                    
-    #                 # Proviamo il merge
-    #                 merged_gene, merged_cost = self.merge_genes(gene_a, gene_b)
-                    
-    #                 # Se il costo del gene unito è strettamente migliore della somma dei due separati
-    #                 if merged_cost < (cost_a + cost_b):
-    #                     # 1. Sostituiamo il gene i con quello unito
-    #                     genotype[i] = merged_gene
-    #                     # 2. Rimuoviamo il gene j (che era più avanti nella lista)
-    #                     genotype.pop(j)
-                        
-    #                     # Segnaliamo il cambiamento per far ripartire il ciclo while principale
-    #                     changed = True
-    #                     break # Rompe il ciclo interno (j)
-                        
-    #             if changed:
-    #                 break # Rompe il ciclo esterno (i) per ricominciare da capo con la nuova lista
-                    
-    #     return genotype, self.compute_cost_genotype(genotype)
+        # NOT USED IN THE FINAL SOLUTION - left over from earlier implementations/ideas.
+    ##____________________________________________________________________________________
     import numpy as np
     from scipy.spatial import KDTree
+    
+    # Not used.
+    def _multiple_cycle(self, genotype: list, max_search=1000) -> tuple:
+        """
+        Split each gene into K trips, carrying a fraction of the gold for each
+        city at every pass. This version handles both integer and FLOAT gold
+        values correctly, which is necessary because input genes may already
+        come from a previous split, for example from generate_adaptive_split
+        or from a prior call to this same function.
 
+        Fixes compared to the previous version:
 
-    # def merge_all_possible(self, genotype, k_search=50, max_neighbors=5):
-    #     """
-    #     Versione ultra-ottimizzata.
-    #     Quando trova un merge conveniente tra due famiglie di geni, unisce 
-    #     istantaneamente tutte le loro copie identiche per evitare calcoli ridondanti.
-    #     """
-        
-    #     if not hasattr(self, '_node_positions'):
-    #         self._node_positions = nx.get_node_attributes(self.graph, 'pos')
+        1. K_max is bounded by min_gold (fixes genotype explosion)
+        Without this bound, a gene with already small gold, such as 1.0 after
+        a previous split, would be fragmented again up to max_search=1000
+        trips with gold < 1, causing the genotype to explode in size
+        (observed: 9021 -> 28126 elements between two calls).
+        Below 1 unit of gold per trip, further splitting no longer makes
+        physical sense: the natural limit is min_gold_int = floor(min(gold
+        in the gene)).
 
-    #     def get_gene_centroid(gene):
-    #         coords = []
-    #         for city, _ in gene:
-    #             if city in self._node_positions:
-    #                 coords.append(self._node_positions[city])
-    #         if not coords:
-    #             return np.array([0.5, 0.5])
-    #         return np.mean(coords, axis=0)
+        2. Exact balanced distribution via telescoping sum
+        The previous version used divmod(w, K) assuming integer w.
+        With FLOAT w (for example 777.63), divmod produces a float remainder r
+        (for example 2.63): the condition "j < r" with integer j counts the
+        trips incorrectly and the fractional part of r is lost, breaking gold
+        conservation (observed bug: "city 1 expected 777.63, got 800.00").
+        The telescoping sum always guarantees an exact total, for both integer
+        and float gold:
+            cumulative_target += w / K
+            part = cumulative_target - cumulative_assigned
+        because it telescopes: the sum of all `part` values is mathematically
+        identical to w, with no residual rounding error.
+        """
+        beta = self._beta
+        gc   = self._gene_cost
 
-    #     changed = True
-    #     while changed:
-    #         changed = False
-    #         n = len(genotype)
-    #         if n <= 1:
-    #             break
+        # ── Early exit: per beta <= 1 K=1 e' sempre ottimale ─────────────
+        if beta <= 1.0:
+            return genotype, self.compute_cost_genotype(genotype)
 
-    #         # 1. Mappiamo ogni gene al suo frozenset
-    #         gene_sets = [frozenset(c for c, _ in g) for g in genotype]
+        def make_trips_balanced_exact(tour, K):
+            """Distribute each city in the gene across K trips with an exact sum."""
+            trips = [[] for _ in range(K)]
+            for c, w in tour:
+                cumulative_target = 0.0
+                cumulative_assigned = 0.0
+                for j in range(K):
+                    cumulative_target += w / K
+                    part = cumulative_target - cumulative_assigned
+                    trips[j].append((c, part))
+                    cumulative_assigned += part
+            return trips
 
-    #         # Estraiamo i geni UNICI
-    #         unique_genes = []
-    #         seen_sets = set()
-    #         frozenset_to_unique_idx = dict()
+        new_genotype: list = []
 
-    #         for idx, g_set in enumerate(gene_sets):
-    #             if g_set not in seen_sets:
-    #                 seen_sets.add(g_set)
-    #                 unique_genes.append(genotype[idx])
-    #                 frozenset_to_unique_idx[g_set] = len(unique_genes) - 1
+        for tour in genotype:
+            if not tour:
+                continue
 
-    #         # 2. Calcola i centroidi solo per gli unici
-    #         centroids = np.array([get_gene_centroid(g) for g in unique_genes])
-    #         tree = KDTree(centroids)
-            
-    #         for i in range(n):
-    #             # Siccome modifichiamo il genotipo dentro il ciclo, verifichiamo di non essere fuori indice
-    #             if i >= len(genotype):
-    #                 break
-                    
-    #             gene_a = genotype[i]
-    #             set_a = gene_sets[i]
-    #             unique_index = frozenset_to_unique_idx[set_a]
-                
-    #             k_search = min(k_search, len(unique_genes)) 
-    #             distances, indices = tree.query(centroids[unique_index], k=k_search)
-                
-    #             if np.isscalar(indices):
-    #                 indices = [indices]
-                    
-    #             tested_neighbors = 0
-    #             for u_j in indices:
-    #                 gene_b_candidate = unique_genes[u_j]
-    #                 set_b = frozenset(c for c, _ in gene_b_candidate)
-                    
-    #                 if set_a == set_b: #or not set_a.isdisjoint(set_b):
-    #                     continue 
+            # ── Physical limit: K cannot exceed the minimum gold in the gene ───
+            # Below 1 unit of gold per trip, splitting no longer makes sense
+            # (and for already fractional gold coming from previous calls, it
+            # avoids endlessly fragmenting an already minimal trip).
+            min_gold = min(w for _, w in tour)
+            if min_gold <= 1.0:
+                new_genotype.append(tour)
+                continue
 
-    #                 if not set_a.isdisjoint(set_b):
-    #                     continue
+            K_max = min(max_search, int(min_gold))
+            if K_max <= 1:
+                new_genotype.append(tour)
+                continue
 
-    #                 #print(f"[DEBUG] Testing merge between gene {i} (set {set_a}) and unique gene {u_j} (set {set_b})")
+            # ── f(K) with float gold: perfectly convex for beta > 1 ──
+            def f(K: int) -> float:
+                return K * gc([(c, w / K) for c, w in tour])
 
-    #                 try:
-    #                     j = gene_sets.index(set_b)
-    #                 except ValueError:
-    #                     continue
+            # ── Binary search for the minimum on [1, K_max] ────────────────────
+            low, high = 1, K_max
+            while low < high:
+                mid = (low + high) // 2
+                if f(mid) <= f(mid + 1):
+                    high = mid
+                else:
+                    low = mid + 1
+            best_K = low
 
-    #                 gene_b = genotype[j]
-                    
-    #                 cost_a = self._gene_cost(gene_a)
-    #                 cost_b = self._gene_cost(gene_b)
-                    
-    #                 # Prova il merge
-    #                 merged_gene, merged_cost = self.merge_genes(gene_a, gene_b)
-                    
-    #                 if merged_cost <= (cost_a + cost_b):
-    #                     print(f"[MERGE] Merging gene {i} (set {set_a}) with gene {j} (set {set_b}) "
-    #                           f"reduces cost from {cost_a + cost_b:.2f} to {merged_cost:.2f}")
-    #                     # ── APPLICAZIONE DEL MERGE DI MASSA (corretto) ─────────────
-    #                     # Invece di replicare lo stesso merged_gene per tutte le coppie
-    #                     # dobbiamo fondere le copie effettive a coppie per preservare
-    #                     # la quantità d'oro (ogni copia può avere gold diverso).
-    #                     idxs_a = [idx for idx, gs in enumerate(gene_sets) if gs == set_a]
-    #                     idxs_b = [idx for idx, gs in enumerate(gene_sets) if gs == set_b]
+            # Check neighbors for robustness on plateaus.
+            best_cost_f = f(best_K)
+            for K_cand in (best_K - 1, best_K + 1):
+                if 1 <= K_cand <= K_max:
+                    c = f(K_cand)
+                    if c < best_cost_f:
+                        best_cost_f = c
+                        best_K = K_cand
 
-    #                     quanti_merge = min(len(idxs_a), len(idxs_b))
+            # ── Build the actual K* trips with an exact sum ─────────────
+            if best_K == 1:
+                new_genotype.append(tour)
+            else:
+                new_genotype.extend(make_trips_balanced_exact(tour, best_K))
 
-    #                     # Costruiamo i merged reali per ogni coppia (idxs_a[k], idxs_b[k])
-    #                     merged_for_a = {}
-    #                     skip_indices = set()
-    #                     for k in range(quanti_merge):
-    #                         a_idx = idxs_a[k]
-    #                         b_idx = idxs_b[k]
-    #                         m_gene, m_cost = self.merge_genes(genotype[a_idx], genotype[b_idx])
-    #                         merged_for_a[a_idx] = m_gene
-    #                         skip_indices.add(b_idx)
+        return new_genotype, self.compute_cost_genotype(new_genotype)
 
-    #                     # Ricostruisci il nuovo genotipo rispettando l'ordine originale
-    #                     nuovo_genotype = []
-    #                     for idx in range(len(genotype)):
-    #                         if idx in merged_for_a:
-    #                             nuovo_genotype.append(merged_for_a[idx])
-    #                         elif idx in skip_indices:
-    #                             continue
-    #                         else:
-    #                             nuovo_genotype.append(genotype[idx])
-
-    #                     genotype[:] = nuovo_genotype
-    #                     changed = True
-    #                     break
-                    
-    #                 tested_neighbors += 1
-    #                 if tested_neighbors >= max_neighbors:
-    #                     break
-                
-    #             if changed:
-    #                 break 
-                    
-    #     return genotype, self.compute_cost_genotype(genotype)
-
-
+    # Not used.
     def merge_all_possible(self, genotype, max_neighbors=5, k_search=50):
         """
-        Versione O(n log n) per iterazione, invece di O(n^2 * k_search).
+        O(n log n) version per iteration, instead of O(n^2 * k_search).
 
-        COLLI DI BOTTIGLIA RISOLTI rispetto alla versione precedente:
+        Bottlenecks fixed compared to the previous version:
 
         1. gene_sets.index(set_b)  ->  O(n) per chiamata, chiamata O(n*k) volte
         FIX: dizionario set_to_indices[frozenset] = deque di indici,
         lookup e pop in O(1).
 
-        2. Il break dopo un SOLO merge forzava un restart completo del while
-        (ricostruzione di gene_sets, centroidi, KDTree per applicare un
-        singolo cambiamento). FIX: si applicano TUTTI i merge trovabili
-        in una singola passata sui set unici, poi si ricostruisce solo
-        se sono stati fatti merge.
+        2. The break after a SINGLE merge forced a full restart of the while
+        loop (rebuilding gene_sets, centroids, KDTree to apply one change).
+        Fix: apply ALL merge candidates found in a single pass over the
+        unique sets, then rebuild only if merges were actually performed.
 
-        3. idxs_a/idxs_b ricalcolati con una scansione O(n) per ogni merge
-        trovato. FIX: mantenuti come deque pre-indicizzate, consumate con
-        popleft() O(1).
+        3. idxs_a/idxs_b were recomputed with an O(n) scan for each merge
+        found. Fix: keep them as pre-indexed deques, consumed with popleft()
+        in O(1).
 
-        4. nuovo_genotype ricostruito scansionando l'intero genotype ad ogni
-        merge accettato. FIX: costruito una sola volta per passata,
-        scorrendo gli indici "da tenere" raccolti durante la scansione.
+        4. new_genotype was reconstructed by scanning the entire genotype at
+        each accepted merge. Fix: build it once per pass, iterating over the
+        collected "keep" indices.
 
-        Complessità per passata: O(n log n + n_unique * k_search)
-        invece di O(n^2 * k_search) nel caso peggiore della versione precedente.
-        Il numero di passate del while è tipicamente O(log n) perché ogni
-        passata applica TUTTI i merge possibili contemporaneamente, non uno
-        alla volta.
+        Complexity per pass: O(n log n + n_unique * k_search)
+        instead of O(n^2 * k_search) in the worst case of the previous version.
+        The number of while passes is typically O(log n) because each pass
+        applies ALL possible merges at once, not one at a time.
         """
         from scipy.spatial import KDTree
         import numpy as np
@@ -933,7 +713,7 @@ class GA_Solver:
             if len(unique_sets) <= 1:
                 break
 
-            # Un gene rappresentativo per ogni set unico (per centroide e costo)
+            # One representative gene for each unique set (for centroid and cost).
             rep_gene = {gs: genotype[idxs[0]] for gs, idxs in set_to_indices.items()}
 
             # ── 2. Centroidi + KDTree SOLO sui set unici, UNA volta per passata ─
@@ -945,11 +725,11 @@ class GA_Solver:
             keep_indices: list = []          # indici originali da mantenere intatti
             merged_genes: list = []          # nuovi geni prodotti da merge
 
-            # ── 3. Scansione dei soli set UNICI (non di tutti gli n geni!) ────
+            # ── 3. Scan only the UNIQUE sets (not all n genes!) ────
             for gs in unique_sets:
                 idxs = set_to_indices[gs]
                 if not idxs:
-                    continue  # già consumato completamente da un merge precedente
+                    continue  # already fully consumed by a previous merge.
 
                 pos_a = set_to_pos[gs]
                 k_eff = min(k_search, len(unique_sets))
@@ -967,7 +747,7 @@ class GA_Solver:
                         continue
                     idxs_b = set_to_indices[set_b]
                     if not idxs_b:
-                        continue  # già consumato da un merge precedente in questa passata
+                        continue  # already consumed by a previous merge in this pass.
 
                     gene_b = rep_gene[set_b]
                     cost_a = self._gene_cost(gene_a)
@@ -1009,10 +789,10 @@ class GA_Solver:
 
         return genotype, self.compute_cost_genotype(genotype)
 
-    
+    # Not used.
     def hill_climber_optimize(self, genotype, max_iterations=1000):
         """
-        Applica mutation al genotipo per ottimizzarlo, mantiene solo i miglioramenti.
+        Apply mutation to the genotype to optimize it, keeping only improvements.
         """
 
         def merge_matching_copies(current_genotype, set_a, set_b):
@@ -1074,7 +854,7 @@ class GA_Solver:
         cost= self.compute_cost_genotype(genotype)
         while iterations < max_iterations:
             
-            # seleziona due geni casuali e prova a unirli, se il costo migliora accetta la modifica
+            # Select two random genes and try to merge them; if the cost improves, accept the change.
             gene1, gene2 = random.sample(genotype, 2)
             #print(f"[HILL_CLIMBER] Iteration {iterations} - Testing merge between gene {gene1} and gene {gene2}")
             cost1 = self._gene_cost(gene1)
@@ -1090,16 +870,17 @@ class GA_Solver:
                 genotype[:] = merge_matching_copies(genotype, set1, set2)
                 new_cost = self.compute_cost_genotype(genotype)
                 cost = new_cost
-                # oltre ad unire i due geni selezionati cerchiamo anche di unire tutte le copie identiche di gene1 e gene2 per massimizzare il miglioramento
-                # questo è importante perché se ci sono molte copie identiche di gene1 e gene2
+                # In addition to merging the two selected genes, also try to merge all identical copies of gene1 and gene2 to maximize the improvement.
+                # This is important when there are many identical copies of gene1 and gene2.
 
             
             iterations += 1
         return genotype, self.compute_cost_genotype(genotype)
 
+    # not used
     def hill_climber_classic(self, genotype, max_iterations=1000):
         """
-        Hill climber performs slit gene ore merge genes to improve solution
+        Hill climber performs split-gene or merge-gene moves to improve the solution.
         """
         cost= self.compute_cost_genotype(genotype)
         for i in range(max_iterations):
@@ -1118,15 +899,15 @@ class GA_Solver:
 
     def _refine_trip_with_weighted_path(self, city, K_fixed, gold_per_visit):
         """
-        Ricalcola il path di ritorno (city -> depot) usando Dijkstra pesato
-        sul gold effettivo trasportato. Una sola chiamata per città.
+        Recompute the return path (city -> depot) using weighted Dijkstra
+        on the actual carried gold. One call per city.
         Args: 
-        - city: la città da cui partire
-        - K_fixed: il numero di visite fisse (trip) per questa città
-        - gold_per_visit: la quantità d'oro trasportata in ogni visita (total_gold / K_fixed) 
+        - city: the city to start from
+        - K_fixed: the fixed number of visits (trips) for this city
+        - gold_per_visit: the amount of gold carried on each visit (total_gold / K_fixed)
         Returns:
-        - length (costo): la lunghezza totale del ritorno  (city -> depot) considerando il peso
-        - path: il percorso di ritorno effettivo da city a depot ottimizzato per il peso 
+        - length (cost): the total return length (city -> depot) considering the weight
+        - path: the actual return path from city to depot optimized for the weight
         """
         def weight_func(u, v, data):
             d = data['dist']
@@ -1139,7 +920,7 @@ class GA_Solver:
     
     def _adaptive_split_with_refinement(self, city, total_gold, max_search=1000):
         """
-        Adaptive Optimal Split with refinement using weighted path for return trips.
+        Adaptive optimal split with refinement using a weighted path for return trips.
         It returns the phenotype gene for depot -> city -> depot
         Args:
         - city: the city target (depot -> city -> depot)   
@@ -1150,17 +931,17 @@ class GA_Solver:
         - best_cost: the total cost for the best_K trips
         - best_path: the optimized path for the return trip (city -> depot) considering the gold weight     
         """
-        # Fase 1: binary search economica con path geometrico fisso (quella attuale)
-        K_fixed = self._binary_search_K(city, total_gold, max_search)  # già implementata
+        # Phase 1: cheap binary search with a fixed geometric path (the current one).
+        K_fixed = self._binary_search_K(city, total_gold, max_search)  # already implemented
 
-        # Fase 2: refinement con path pesato, su un piccolo intorno di K_fixed
+        # Phase 2: refinement with a weighted path, in a small neighborhood of K_fixed.
         candidates = {max(1, int(K_fixed * 0.5)), K_fixed, int(K_fixed * 1.5)}
         best_K, best_cost, best_path = None, float('inf'), None
 
         for K in candidates:
             gold_per_visit = total_gold / K
             length, path = self._refine_trip_with_weighted_path(city, K, gold_per_visit)
-            total_trip_cost = K * (self.dist_matrix[0][city] + length)  # andata leggera + ritorno pesato
+            total_trip_cost = K * (self.dist_matrix[0][city] + length)  # light outbound leg + weighted return
             if total_trip_cost < best_cost:
                 best_cost, best_K, best_path = total_trip_cost, K, path
         
@@ -1231,7 +1012,7 @@ class GA_Solver:
     def _generate_solution_with_adaptive_split(self, max_search=1000):
         """
         Generate a solution using the adaptive split with refinement for each city.
-        Returns the full fenotype and its cost.
+        Returns the full phenotype and its cost.
 
         """
         phenotype = []
@@ -1240,206 +1021,22 @@ class GA_Solver:
             total_gold = self.graph.nodes[city]['gold']
             if total_gold == 0: continue
 
-            # path di andata 
+            # Outbound path
             initial_path = self.full_paths[self.node_to_idx[0]][self.node_to_idx[city]]  # depot -> city
             
             best_K, best_cost, best_path = self._adaptive_split_with_refinement(city, total_gold, max_search)
            # print(f"[DEBUG] City {city}: total_gold={total_gold}, best_K={best_K}, best_cost={best_cost:.2f}, best_return_path={best_path}")
             for _ in range(best_K):
                 if phenotype:
-                    # collega il depot corrente alla city corrente senza duplicare depot/city
+                    # Connect the current depot to the current city without duplicating depot/city.
                     phenotype.extend((c, 0) for c in initial_path[1:-1])
                 phenotype.append((city, total_gold / best_K))
-                phenotype.extend([ (c, 0) for c in best_path[1:]])  # aggiungi il percorso di ritorno ottimizzato, evitando di ripetere la città
+                phenotype.extend([(c, 0) for c in best_path[1:]])  # Add the optimized return path, skipping the city itself.
                 
             #print(f"[DEBUG] Phenotype after city {city}: {phenotype}")
         return phenotype, self.compute_cost_phenotype(phenotype)
 
-    def generate_adaptive_split(self, max_search=50):
-        """
-        Adaptive Optimal Split (Binary Search Optimized)
-        This function finds which one id the best number of trips (K) to split each city into, using binary search.
-        """
-        if self._beta <= 1.0:
-            # Per beta <= 1 i trip singoli non sono vantaggiosi; usa l'euristica NN
-            return self._improved_baseline_individual()
-        best_trips = []
-        
-        for city in self.cities_to_visit:
-            total_gold = self.graph.nodes[city]['gold']
-            if total_gold == 0: continue
-            
-            # Helper to calculate the cost for K trips
-            def get_total_strategy_cost(k):
-                gold_per_visit = total_gold / k
-                temp_trip = [(city, gold_per_visit)] # Single trip for this city with gold split into K parts
-                single_trip_cost = self._gene_cost(temp_trip)
-                return k * single_trip_cost, temp_trip
-
-            # Binary Search for Optimal K
-            low = 1
-            high = max_search
-            
-            best_k = 1
-            best_trip_obj = None
-            min_cost = float('inf')
-
-            while low < high:
-                mid = (low + high) // 2
-                
-                # 1. Capture BOTH trip objects
-                cost_mid, trip_mid = get_total_strategy_cost(mid)
-                cost_next, trip_next = get_total_strategy_cost(mid + 1) # <--- Capture trip_next
-                
-                # 2. Update Best if 'mid' is better
-                if cost_mid < min_cost:
-                    min_cost = cost_mid
-                    best_k = mid
-                    best_trip_obj = trip_mid
-                
-                # 3. Update Best if 'mid+1' is better
-                if cost_next < min_cost: 
-                    min_cost = cost_next
-                    best_k = mid + 1
-                    best_trip_obj = trip_next
-                
-                # Binary Search Direction
-                if cost_mid < cost_next:
-                    high = mid
-                else:
-                    low = mid + 1
-            
-            # Final cleanup (check if 'low' is better than what we found during search)
-            final_k = low
-            final_trip=[(city, total_gold / final_k) ] 
-            final_cost = self.compute_cost_genotype([final_trip])
-            
-            if final_cost < min_cost:
-                winner_trip = final_trip
-                winner_k = final_k
-            else:
-                if best_trip_obj is None:
-                    winner_trip = final_trip
-                    winner_k = final_k
-                else:
-                    winner_trip = best_trip_obj
-                    winner_k = best_k
-
-            # Apply the winner configuration
-            # winner_trip was created with gold = total/winner_k
-            # So repeating it winner_k times yields exactly total gold.
-            if winner_k  >0:
-                best_trips.extend([winner_trip.copy() for _ in range(winner_k)])
-            
-        return best_trips, self.compute_cost_genotype(best_trips)
-    
-    # def generate_adaptive_split_v2(self) -> tuple:
-    #     """
-    #     Generazione adattiva basata su costo marginale reale ed euristica di inserimento.
-    #     Garantisce la feasibility al 100% gestendo accuratamente i residui float.
-    #     """
-    #     beta = self._beta
-    #     alpha = self._alpha
-    #     dm = self.dist_matrix
-    #     n2i = self.node_to_idx
-    #     ng = self.node_gold
-    #     gc = self._gene_cost
-
-    #     # Clona i valori esatti di partenza per essere sicuri di raccogliere TUTTO l'oro
-    #     pool_cities = {c: float(ng.get(c, 0.0)) for c in self.cities_to_visit if ng.get(c, 0.0) > 0}
-    #     final_genotype = []
-
-    #     while pool_cities:
-    #         current_trip = []
-    #         current_node = 0  # Partiamo dal depot
-
-    #         while pool_cities:
-    #             ni_curr = n2i[current_node]
-                
-    #             # 1. Trova la città più vicina tra quelle rimaste nel pool
-    #             next_city = min(pool_cities.keys(), key=lambda c: dm[ni_curr, n2i[c]])
-    #             gold_available = pool_cities[next_city]
-
-    #             # Se il viaggio corrente è vuoto, inseriamo la città di partenza
-    #             if not current_trip:
-    #                 quota = min(gold_available, 10.0)
-    #                 # Protezione float: se prendiamo quasi tutto, prendiamo tutto
-    #                 if abs(gold_available - quota) < 1e-4:
-    #                     quota = gold_available
-                    
-    #                 current_trip.append((next_city, quota))
-    #                 pool_cities[next_city] -= quota
-    #                 if pool_cities[next_city] < 1e-4:
-    #                     del pool_cities[next_city]
-    #                 current_node = next_city
-    #                 continue
-
-    #             # 2. VALUTAZIONE COSTO MARGINALE CON OTTIMIZZAZIONE LOCALE
-    #             # Calcoliamo il costo se dovessimo fare un viaggio isolato Depot -> Next -> Depot
-    #             cost_dedicated_future = gc([(next_city, gold_available)])
-
-    #             # Testiamo l'inserimento ottimizzato di una quota minima
-    #             test_amount = min(gold_available, 1.0)
-    #             candidate_trip = current_trip + [(next_city, test_amount)]
-    #             # IMPORTANTE: ottimizziamo l'ordine prima di calcolare il costo, 
-    #             # altrimenti l'ordine casuale fa esplodere la funzione di costo!
-    #             candidate_trip, _ = self.optimize_gene(candidate_trip)
-                
-    #             cost_if_added = gc(candidate_trip)
-    #             cost_if_closed = gc(current_trip)
-    #             marginal_cost_increase = cost_if_added - cost_if_closed
-
-    #             # Se l'inserimento costa più di un viaggio dedicato futuro, interrompiamo questo trip
-    #             if marginal_cost_increase > cost_dedicated_future:
-    #                 break
-                
-    #             # Se è conveniente, cerchiamo di caricare quanta più roba possibile
-    #             step = max(1.0, gold_available / 5.0)
-    #             gold_taken = 0.0
-                
-    #             while gold_taken < gold_available:
-    #                 next_chunk = min(step, gold_available - gold_taken)
-    #                 test_trip = current_trip + [(next_city, gold_taken + next_chunk)]
-    #                 test_trip, _ = self.optimize_gene(test_trip)
-                    
-    #                 # Condizione di stop economico
-    #                 if (gc(test_trip) - cost_if_closed) > gc([(next_city, gold_available)]):
-    #                     break
-                        
-    #                 gold_taken += next_chunk
-    #                 # Freno di sicurezza basato sulla combinazione Alpha-Peso
-    #                 if (sum(g for _, g in current_trip) + gold_taken) * alpha > 2.0:
-    #                     break
-
-    #             # Se abbiamo preso dell'oro, aggiorniamo le strutture
-    #             if gold_taken > 0:
-    #                 # Protezione assoluta dai residui float
-    #                 if abs(gold_available - gold_taken) < 1e-4:
-    #                     gold_taken = gold_available
-
-    #                 current_trip.append((next_city, gold_taken))
-    #                 pool_cities[next_city] -= gold_taken
-    #                 if pool_cities[next_city] < 1e-4:
-    #                     del pool_cities[next_city]
-    #                 current_node = next_city
-    #             else:
-    #                 # Se non è stato possibile prendere oro, interrompiamo il trip per evitare loop infiniti
-    #                 break
-
-    #         if current_trip:
-    #             # Consolidamento e ottimizzazione finale del singolo trip
-    #             optimized_trip, _ = self.optimize_gene(current_trip)
-    #             # Risolviamo eventuali duplicati interni alla rotta aggregandoli (richiesto dal tuo solver)
-    #             merged_dict = {}
-    #             for c, g in optimized_trip:
-    #                 merged_dict[c] = merged_dict.get(c, 0.0) + g
-                
-    #             final_trip, _ = self.optimize_gene(list(merged_dict.items()))
-    #             final_genotype.append(final_trip)
-
-    #     return final_genotype, self.compute_cost_genotype(final_genotype)
-
-
+   
     # ──────────────────────────────────────────────────────────────────────
     #  GA OPERATORS
     # ──────────────────────────────────────────────────────────────────────
@@ -1476,20 +1073,20 @@ class GA_Solver:
     
     def mutation(self, genotype: list) -> tuple:
         """
-        Two modes:
-          < 0.8 → split a random gene into two (if it has ≥ 2 cities)
-          ≥ 0.8 → merge two random genes into one (if it doesn't exceed gold limits)
+                Two modes:
+                    < 0.8 -> split a random gene into two (if it has >= 2 cities)
+                    >= 0.8 -> merge two random genes into one (if it does not exceed gold limits)
         """
         if not genotype:
             return genotype, self.compute_cost_genotype(genotype)
         
-        # scegliamo dinamicamente se preferire spli o merge in base a beta
+        # Dynamically decide whether to prefer split or merge based on beta.
 
 
         ratio = random.random()
 
         if ratio <= self.mutation_threshold:
-            # Split
+            # Split.
             new_genotype, new_cost= self.split_mutation(genotype)
             return new_genotype, new_cost
         else:
@@ -1541,7 +1138,7 @@ class GA_Solver:
     #  GA MAIN LOOP
     # ──────────────────────────────────────────────────────────────────────
 
-    def run_ga_logic(self, fast: bool = False) -> tuple:
+    def run_ga_logic(self, pop_size: int, generations: int, off_size: int, fast: bool = False) -> tuple:
         """
         GA loop with:
           - Population as (cost, genotype) tuples → sort on float, not list
@@ -1557,11 +1154,11 @@ class GA_Solver:
 
         best_cost, best_chromo = pop[0]
         stagnation = 0
-        half_off   = self.offprint // 2
+        half_off   = off_size // 2
         _mutation  = self.mutation
         _crossover = self.crossover
 
-        for _gen in range(self.generations):
+        for _gen in range(generations):
             next_gen = []
 
             for _ in range(half_off):
@@ -1584,7 +1181,7 @@ class GA_Solver:
             # Elitism
             next_gen.append(pop[0])
             next_gen.sort(key=lambda x: x[0])
-            pop = next_gen[: self.pop_size]
+            pop = next_gen[: pop_size]
 
             if pop[0][0] < best_cost:
                 best_cost, best_chromo = pop[0]
@@ -1604,23 +1201,18 @@ class GA_Solver:
 
     def solution(self, fast: bool = True):
         if self.alpha == 0 or self.beta == 0:
-            # in questi due casi il costo è lineare, si basa solo sulla distanza 
-            # conviene fare un unico giro  (only one gene)
+            # In these two cases the cost is linear and depends only on distance.
+            # It is convenient to perform a single tour (only one gene).
             tour = [(city, self.node_gold.get(city, 0.0)) for city in self.cities_to_visit if self.node_gold.get(city, 0.0) > 0]
-            best_path, best_cost = self.optimize_gene_suboptimal(tour)
+            best_path, best_cost = self.optimize_gene(tour)
             phenotype= self.genotype_to_phenotype([best_path])
             return  phenotype, best_cost
         
         if self.beta > 1.0: 
-            # in questo caso non ha senso unire i tour il costo di trasportare oro è troppo grande,
-            # print(f"[INFO] Using adaptive split for beta={self.beta} and pop_size={self.pop_size} NO GA will be run...")
-            # genotype, best_cost = self.generate_adaptive_split(max_search=1000)
-            # genotype, best_cost = self.hill_climber_optimize(genotype, max_iterations=100000)
-            
-            # phenotype= self.genotype_to_phenotype(genotype)
             phenotype, best_cost = self._generate_solution_with_adaptive_split(max_search=1000)
             return  phenotype, best_cost
-
-        genotype, best_cost = self.run_ga_logic(fast=fast)
+        
+        pop, gen, off= compute_ga_params(n_cities=self.problem.graph.number_of_nodes(), beta=self.beta, alpha=self.alpha)
+        genotype, best_cost = self.run_ga_logic(pop, gen, off, fast=fast)
         phenotype = self.genotype_to_phenotype(genotype)
         return phenotype, best_cost

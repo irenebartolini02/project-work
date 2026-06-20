@@ -1,13 +1,10 @@
 from Problem import Problem
-from src.GA_solver_2 import GA_Solver
-from src.utils import compute_ga_params
+from src.Solver import Solver
+
 
 def solution(p:Problem):
-
-    n_cities = p.graph.number_of_nodes()
-    population_size, generations, offprint = compute_ga_params(n_cities, p.beta, p.alpha)
-
-    solver = GA_Solver(p, pop_size=population_size, generations=generations, offprint=offprint)
+    
+    solver = Solver(p)
     # set fast to True for a quicker solution, it enable starvation control in GA
     best_path , best_cost = solver.solution(fast=False)
 

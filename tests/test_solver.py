@@ -10,7 +10,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from Problem import Problem
-from src.GA_solver_2 import GA_Solver
+from src.Solver import Solver
 
 
 class FakeProblem:
@@ -82,7 +82,7 @@ class FakeProblemMergeAllPossible:
 class GASolver2Tests(unittest.TestCase):
     def setUp(self):
         self.problem = FakeProblem()
-        self.solver = GA_Solver(self.problem)
+        self.solver = Solver(self.problem)
         self.genotype = [[(1, 10), (2, 20)]]
         self.phenotype = [(1, 10), (2, 20), (3, 0), (0, 0)]
 

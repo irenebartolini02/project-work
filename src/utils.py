@@ -49,32 +49,6 @@ def compute_ga_params(n_cities, beta, alpha):
     #print(f"GA Params: pop_size={pop_size}, generations={generations}, offprint={offprint}")
     return pop_size, generations, offprint
 
-# def compute_ga_params(n_cities, beta, alpha):
-#     if beta < 1.0:
-#         # TSP path: 2-opt è O(n²), budget in secondi
-#         tsp_budget = min(10.0, max(2.0, n_cities / 50.0))
-#         return None, None, None   # non serve GA, solo tsp_budget
-    
-#     if n_cities <= 50:
-#         pop, gens, off = n_cities, 100, int(n_cities * 0.6)
-#     elif n_cities <= 100:
-#         pop = min(100, n_cities)
-#         gens = 100 if beta < 2 else 50
-#         off  = int(pop * (0.5 if beta < 2 else 0.25))
-#     elif n_cities <= 200:
-#         pop = min(50, n_cities // 3)
-#         gens = 80 if beta < 2 else 40
-#         off  = int(pop * 0.3)
-#     else:  # n > 200
-#         if beta >= 2:
-#             pop, gens, off = 5, 15, 2
-#         else:
-#             # β=1.0 large n: poca popolazione, seed 2-opt conta più delle generazioni
-#             pop  = min(20, int(60 / (n_cities / 100)**0.5))
-#             gens = max(20, int(50 - 10 * beta))
-#             off  = max(4, int(pop * 0.3))
-    
-#     return max(3, pop), max(10, gens), max(2, off)
 
 def check_path(problem, path):
     """Check if a solution is valid and compute its cost."""
