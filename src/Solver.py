@@ -421,6 +421,8 @@ class Solver:
     # ──────────────────────────────────────────────────────────────────────
     #  INITIAL POPULATION
     # ──────────────────────────────────────────────────────────────────────
+    
+    # not used 
     def _shortest_path(self) -> list:
         """
         When the cost depends only on the distance and not on the gold carried, we can use the precomputed shortest paths.
@@ -442,6 +444,7 @@ class Solver:
 
         return [genotype], self._gene_cost(genotype)
 
+    # not used 
     def _greedy_solution(self) -> list:
         """
         Neirest Neighbour greedy solution based on distance from previous city."""
@@ -464,12 +467,11 @@ class Solver:
         return tour
     
     
-    def generate_initial_population(self) -> list:
+    def generate_initial_population(self, pop_size: int) -> list:
         population = []
         ctv    = self.cities_to_visit
-        mc     = self._multiple_cycle
         eas    = self.evaluate_and_segment
-        use_mc = self.beta > 1.0
+    
 
         greedy = 0
         if self.prob.beta >= 0.5:
@@ -477,19 +479,12 @@ class Solver:
             greedy+=1      
             greedy_gen, greedy_cost= self._improved_baseline_individual()
             population.append((greedy_gen, greedy_cost))
-            if self.prob.beta > 1:
-                greedy+=1
-                chunked_gen, chunked_cost = self.generate_adaptive_split(max_search=1000)
-                population.append((chunked_gen, chunked_cost))
-
-        for _ in range(self.pop_size - greedy):
+            
+        for _ in range(pop_size - greedy):
             chromosome = ctv[:]
             np.random.shuffle(chromosome)
             genotype, cost = eas(chromosome)
-            if use_mc:
-                genotype, cost = mc(genotype)
             population.append((genotype, cost))
-
 
         return population
 
@@ -545,353 +540,6 @@ class Solver:
         
         return genotype, self.compute_cost_genotype(genotype)
     
-    ##____________________________________________________________________________________
-
-        # NOT USED IN THE FINAL SOLUTION - left over from earlier implementations/ideas.
-    ##____________________________________________________________________________________
-    import numpy as np
-    from scipy.spatial import KDTree
-    
-    # Not used.
-    def _multiple_cycle(self, genotype: list, max_search=1000) -> tuple:
-        """
-        Split each gene into K trips, carrying a fraction of the gold for each
-        city at every pass. This version handles both integer and FLOAT gold
-        values correctly, which is necessary because input genes may already
-        come from a previous split, for example from generate_adaptive_split
-        or from a prior call to this same function.
-
-        Fixes compared to the previous version:
-
-        1. K_max is bounded by min_gold (fixes genotype explosion)
-        Without this bound, a gene with already small gold, such as 1.0 after
-        a previous split, would be fragmented again up to max_search=1000
-        trips with gold < 1, causing the genotype to explode in size
-        (observed: 9021 -> 28126 elements between two calls).
-        Below 1 unit of gold per trip, further splitting no longer makes
-        physical sense: the natural limit is min_gold_int = floor(min(gold
-        in the gene)).
-
-        2. Exact balanced distribution via telescoping sum
-        The previous version used divmod(w, K) assuming integer w.
-        With FLOAT w (for example 777.63), divmod produces a float remainder r
-        (for example 2.63): the condition "j < r" with integer j counts the
-        trips incorrectly and the fractional part of r is lost, breaking gold
-        conservation (observed bug: "city 1 expected 777.63, got 800.00").
-        The telescoping sum always guarantees an exact total, for both integer
-        and float gold:
-            cumulative_target += w / K
-            part = cumulative_target - cumulative_assigned
-        because it telescopes: the sum of all `part` values is mathematically
-        identical to w, with no residual rounding error.
-        """
-        beta = self._beta
-        gc   = self._gene_cost
-
-        # ── Early exit: per beta <= 1 K=1 e' sempre ottimale ─────────────
-        if beta <= 1.0:
-            return genotype, self.compute_cost_genotype(genotype)
-
-        def make_trips_balanced_exact(tour, K):
-            """Distribute each city in the gene across K trips with an exact sum."""
-            trips = [[] for _ in range(K)]
-            for c, w in tour:
-                cumulative_target = 0.0
-                cumulative_assigned = 0.0
-                for j in range(K):
-                    cumulative_target += w / K
-                    part = cumulative_target - cumulative_assigned
-                    trips[j].append((c, part))
-                    cumulative_assigned += part
-            return trips
-
-        new_genotype: list = []
-
-        for tour in genotype:
-            if not tour:
-                continue
-
-            # ── Physical limit: K cannot exceed the minimum gold in the gene ───
-            # Below 1 unit of gold per trip, splitting no longer makes sense
-            # (and for already fractional gold coming from previous calls, it
-            # avoids endlessly fragmenting an already minimal trip).
-            min_gold = min(w for _, w in tour)
-            if min_gold <= 1.0:
-                new_genotype.append(tour)
-                continue
-
-            K_max = min(max_search, int(min_gold))
-            if K_max <= 1:
-                new_genotype.append(tour)
-                continue
-
-            # ── f(K) with float gold: perfectly convex for beta > 1 ──
-            def f(K: int) -> float:
-                return K * gc([(c, w / K) for c, w in tour])
-
-            # ── Binary search for the minimum on [1, K_max] ────────────────────
-            low, high = 1, K_max
-            while low < high:
-                mid = (low + high) // 2
-                if f(mid) <= f(mid + 1):
-                    high = mid
-                else:
-                    low = mid + 1
-            best_K = low
-
-            # Check neighbors for robustness on plateaus.
-            best_cost_f = f(best_K)
-            for K_cand in (best_K - 1, best_K + 1):
-                if 1 <= K_cand <= K_max:
-                    c = f(K_cand)
-                    if c < best_cost_f:
-                        best_cost_f = c
-                        best_K = K_cand
-
-            # ── Build the actual K* trips with an exact sum ─────────────
-            if best_K == 1:
-                new_genotype.append(tour)
-            else:
-                new_genotype.extend(make_trips_balanced_exact(tour, best_K))
-
-        return new_genotype, self.compute_cost_genotype(new_genotype)
-
-    # Not used.
-    def merge_all_possible(self, genotype, max_neighbors=5, k_search=50):
-        """
-        O(n log n) version per iteration, instead of O(n^2 * k_search).
-
-        Bottlenecks fixed compared to the previous version:
-
-        1. gene_sets.index(set_b)  ->  O(n) per chiamata, chiamata O(n*k) volte
-        FIX: dizionario set_to_indices[frozenset] = deque di indici,
-        lookup e pop in O(1).
-
-        2. The break after a SINGLE merge forced a full restart of the while
-        loop (rebuilding gene_sets, centroids, KDTree to apply one change).
-        Fix: apply ALL merge candidates found in a single pass over the
-        unique sets, then rebuild only if merges were actually performed.
-
-        3. idxs_a/idxs_b were recomputed with an O(n) scan for each merge
-        found. Fix: keep them as pre-indexed deques, consumed with popleft()
-        in O(1).
-
-        4. new_genotype was reconstructed by scanning the entire genotype at
-        each accepted merge. Fix: build it once per pass, iterating over the
-        collected "keep" indices.
-
-        Complexity per pass: O(n log n + n_unique * k_search)
-        instead of O(n^2 * k_search) in the worst case of the previous version.
-        The number of while passes is typically O(log n) because each pass
-        applies ALL possible merges at once, not one at a time.
-        """
-        from scipy.spatial import KDTree
-        import numpy as np
-        import networkx as nx
-
-        if not hasattr(self, '_node_positions'):
-            self._node_positions = nx.get_node_attributes(self.graph, 'pos')
-
-        def get_gene_centroid(gene):
-            coords = [self._node_positions[c] for c, _ in gene if c in self._node_positions]
-            return np.mean(coords, axis=0) if coords else np.array([0.5, 0.5])
-
-        genotype = list(genotype)  # copia di lavoro
-
-        while True:
-            n = len(genotype)
-            if n <= 1:
-                break
-
-            # ── 1. Indicizzazione O(n): frozenset -> deque di indici ─────────
-            gene_sets = [frozenset(c for c, _ in g) for g in genotype]
-            set_to_indices: dict = defaultdict(deque)
-            for idx, gs in enumerate(gene_sets):
-                set_to_indices[gs].append(idx)
-
-            unique_sets = list(set_to_indices.keys())
-            if len(unique_sets) <= 1:
-                break
-
-            # One representative gene for each unique set (for centroid and cost).
-            rep_gene = {gs: genotype[idxs[0]] for gs, idxs in set_to_indices.items()}
-
-            # ── 2. Centroidi + KDTree SOLO sui set unici, UNA volta per passata ─
-            centroids = np.array([get_gene_centroid(rep_gene[gs]) for gs in unique_sets])
-            tree = KDTree(centroids)
-            set_to_pos = {gs: i for i, gs in enumerate(unique_sets)}
-
-            any_merge_this_pass = False
-            keep_indices: list = []          # indici originali da mantenere intatti
-            merged_genes: list = []          # nuovi geni prodotti da merge
-
-            # ── 3. Scan only the UNIQUE sets (not all n genes!) ────
-            for gs in unique_sets:
-                idxs = set_to_indices[gs]
-                if not idxs:
-                    continue  # already fully consumed by a previous merge.
-
-                pos_a = set_to_pos[gs]
-                k_eff = min(k_search, len(unique_sets))
-                _, neighbor_positions = tree.query(centroids[pos_a], k=k_eff)
-                if np.isscalar(neighbor_positions):
-                    neighbor_positions = [neighbor_positions]
-
-                gene_a = rep_gene[gs]
-                tested = 0
-                merged_here = False
-
-                for pos_b in neighbor_positions:
-                    set_b = unique_sets[pos_b]
-                    if set_b == gs or not gs.isdisjoint(set_b):
-                        continue
-                    idxs_b = set_to_indices[set_b]
-                    if not idxs_b:
-                        continue  # already consumed by a previous merge in this pass.
-
-                    gene_b = rep_gene[set_b]
-                    cost_a = self._gene_cost(gene_a)
-                    cost_b = self._gene_cost(gene_b)
-                    merged_gene, merged_cost = self.merge_genes(gene_a, gene_b)
-
-                    if merged_cost <= cost_a + cost_b:
-                        # ── Applica il merge a TUTTE le coppie disponibili ────
-                        quanti = min(len(idxs), len(idxs_b))
-                        for _ in range(quanti):
-                            idxs.popleft()
-                            idxs_b.popleft()
-                            merged_genes.append(merged_gene)
-                        any_merge_this_pass = True
-                        merged_here = True
-                        break  # passa al prossimo set unico
-
-                    tested += 1
-                    if tested >= max_neighbors:
-                        break
-
-                if not merged_here:
-                    # Nessun merge trovato per questo set: le sue copie restano intatte
-                    keep_indices.extend(idxs)
-                    idxs.clear()
-
-            # ── 4. Aggiungi le copie residue di set parzialmente fusi ─────────
-            # (es. set_a aveva 5 copie, solo 3 fuse: le restanti 2 vanno mantenute)
-            for gs in unique_sets:
-                keep_indices.extend(set_to_indices[gs])
-
-            # ── 5. Costruisci il nuovo genotype in un'unica passata O(n) ─────
-            keep_indices.sort()
-            new_genotype = [genotype[i] for i in keep_indices] + merged_genes
-            genotype = new_genotype
-
-            if not any_merge_this_pass:
-                break
-
-        return genotype, self.compute_cost_genotype(genotype)
-
-    # Not used.
-    def hill_climber_optimize(self, genotype, max_iterations=1000):
-        """
-        Apply mutation to the genotype to optimize it, keeping only improvements.
-        """
-
-        def merge_matching_copies(current_genotype, set_a, set_b):
-            gene_sets = [frozenset(c for c, _ in g) for g in current_genotype]
-
-            if set_a == set_b:
-                matching_indices = [idx for idx, gs in enumerate(gene_sets) if gs == set_a]
-                merged_for_idx = {}
-                skip_indices = set()
-
-                for left_idx, right_idx in zip(matching_indices[0::2], matching_indices[1::2]):
-                    merged_gene, _ = self.merge_genes(current_genotype[left_idx], current_genotype[right_idx])
-                    merged_for_idx[left_idx] = merged_gene
-                    skip_indices.add(right_idx)
-
-                if not merged_for_idx:
-                    return current_genotype
-
-                rebuilt = []
-                for idx in range(len(current_genotype)):
-                    if idx in merged_for_idx:
-                        rebuilt.append(merged_for_idx[idx])
-                    elif idx in skip_indices:
-                        continue
-                    else:
-                        rebuilt.append(current_genotype[idx])
-
-                return rebuilt
-
-            idxs_a = [idx for idx, gs in enumerate(gene_sets) if gs == set_a]
-            idxs_b = [idx for idx, gs in enumerate(gene_sets) if gs == set_b]
-
-            quanti_merge = min(len(idxs_a), len(idxs_b))
-            if quanti_merge == 0:
-                return current_genotype
-
-            merged_for_a = {}
-            skip_indices = set()
-
-            for k in range(quanti_merge):
-                a_idx = idxs_a[k]
-                b_idx = idxs_b[k]
-                merged_gene, _ = self.merge_genes(current_genotype[a_idx], current_genotype[b_idx])
-                merged_for_a[a_idx] = merged_gene
-                skip_indices.add(b_idx)
-
-            rebuilt = []
-            for idx in range(len(current_genotype)):
-                if idx in merged_for_a:
-                    rebuilt.append(merged_for_a[idx])
-                elif idx in skip_indices:
-                    continue
-                else:
-                    rebuilt.append(current_genotype[idx])
-
-            return rebuilt
-        
-        iterations = 0
-        cost= self.compute_cost_genotype(genotype)
-        while iterations < max_iterations:
-            
-            # Select two random genes and try to merge them; if the cost improves, accept the change.
-            gene1, gene2 = random.sample(genotype, 2)
-            #print(f"[HILL_CLIMBER] Iteration {iterations} - Testing merge between gene {gene1} and gene {gene2}")
-            cost1 = self._gene_cost(gene1)
-            cost2 = self._gene_cost(gene2)
-            set1 = frozenset(c for c, _ in gene1)
-            set2 = frozenset(c for c, _ in gene2)
-            merged_gene, merged_cost = self.merge_genes(gene1, gene2)
-            if merged_cost <= cost1+cost2:
-                #print(f"[HILL_CLIMBER] Merged gene {gene1} and {gene2} into {merged_gene} with cost {merged_cost:.2f} (improvement from {cost1+cost2:.2f})")
-                genotype.remove(gene1)
-                genotype.remove(gene2)
-                genotype.append(merged_gene)
-                genotype[:] = merge_matching_copies(genotype, set1, set2)
-                new_cost = self.compute_cost_genotype(genotype)
-                cost = new_cost
-                # In addition to merging the two selected genes, also try to merge all identical copies of gene1 and gene2 to maximize the improvement.
-                # This is important when there are many identical copies of gene1 and gene2.
-
-            
-            iterations += 1
-        return genotype, self.compute_cost_genotype(genotype)
-
-    # not used
-    def hill_climber_classic(self, genotype, max_iterations=1000):
-        """
-        Hill climber performs split-gene or merge-gene moves to improve the solution.
-        """
-        cost= self.compute_cost_genotype(genotype)
-        for i in range(max_iterations):
-
-            new_genotype, new_cost = self.mutation(genotype)
-            if new_cost<cost:
-                print(f"\n[DEBUG] find convenient mutation iteration {i}")
-                genotype=new_genotype
-                cost= new_cost
-
-        return genotype, cost
 
 #### ──────────────────────────────────────────────────────────────────────
     #  SPLIT ADAPTIVE (beta > 1.0)
@@ -1123,8 +771,6 @@ class Solver:
                 seen.add(city)
 
         genotype, cost = self.evaluate_and_segment(chromosome)
-        if self._beta > 1.0:
-            genotype, cost = self._multiple_cycle(genotype)
 
         # validate = self.check_feasibility_genotype(genotype)
         # if not validate:
@@ -1145,7 +791,7 @@ class Solver:
           - Inline tournament selection (no lambda)
           - Elitism: best always survives
         """
-        raw_pop = self.generate_initial_population()
+        raw_pop = self.generate_initial_population( pop_size)
         # (cost, genotype) so sort key is just a float
         pop: list = [(c, g) for g, c in raw_pop]
         pop.sort(key=lambda x: x[0])
@@ -1192,7 +838,7 @@ class Solver:
 
             if stagnation >= 10 and fast:
                 break
-        print(f"Max found Generation {max_generation}/{self.generations} ")
+        #print(f"Max found Generation {max_generation}/{generations} ")
         return best_chromo, best_cost
 
     # ──────────────────────────────────────────────────────────────────────
@@ -1212,7 +858,357 @@ class Solver:
             phenotype, best_cost = self._generate_solution_with_adaptive_split(max_search=1000)
             return  phenotype, best_cost
         
-        pop, gen, off= compute_ga_params(n_cities=self.problem.graph.number_of_nodes(), beta=self.beta, alpha=self.alpha)
+        n_cities = len(self.cities_to_visit)
+        pop, gen, off= compute_ga_params(n_cities=n_cities, beta=self.beta, alpha=self.alpha)
         genotype, best_cost = self.run_ga_logic(pop, gen, off, fast=fast)
         phenotype = self.genotype_to_phenotype(genotype)
         return phenotype, best_cost
+    
+
+    ##____________________________________________________________________________________
+
+        # NOT USED IN THE FINAL SOLUTION - left over from earlier implementations/ideas.
+    ##____________________________________________________________________________________
+    # import numpy as np
+    # from scipy.spatial import KDTree
+    
+    # # Not used.
+    # def _multiple_cycle(self, genotype: list, max_search=1000) -> tuple:
+    #     """
+    #     Split each gene into K trips, carrying a fraction of the gold for each
+    #     city at every pass. This version handles both integer and FLOAT gold
+    #     values correctly, which is necessary because input genes may already
+    #     come from a previous split, for example from generate_adaptive_split
+    #     or from a prior call to this same function.
+
+    #     Fixes compared to the previous version:
+
+    #     1. K_max is bounded by min_gold (fixes genotype explosion)
+    #     Without this bound, a gene with already small gold, such as 1.0 after
+    #     a previous split, would be fragmented again up to max_search=1000
+    #     trips with gold < 1, causing the genotype to explode in size
+    #     (observed: 9021 -> 28126 elements between two calls).
+    #     Below 1 unit of gold per trip, further splitting no longer makes
+    #     physical sense: the natural limit is min_gold_int = floor(min(gold
+    #     in the gene)).
+
+    #     2. Exact balanced distribution via telescoping sum
+    #     The previous version used divmod(w, K) assuming integer w.
+    #     With FLOAT w (for example 777.63), divmod produces a float remainder r
+    #     (for example 2.63): the condition "j < r" with integer j counts the
+    #     trips incorrectly and the fractional part of r is lost, breaking gold
+    #     conservation (observed bug: "city 1 expected 777.63, got 800.00").
+    #     The telescoping sum always guarantees an exact total, for both integer
+    #     and float gold:
+    #         cumulative_target += w / K
+    #         part = cumulative_target - cumulative_assigned
+    #     because it telescopes: the sum of all `part` values is mathematically
+    #     identical to w, with no residual rounding error.
+    #     """
+    #     beta = self._beta
+    #     gc   = self._gene_cost
+
+    #     # ── Early exit: per beta <= 1 K=1 e' sempre ottimale ─────────────
+    #     if beta <= 1.0:
+    #         return genotype, self.compute_cost_genotype(genotype)
+
+    #     def make_trips_balanced_exact(tour, K):
+    #         """Distribute each city in the gene across K trips with an exact sum."""
+    #         trips = [[] for _ in range(K)]
+    #         for c, w in tour:
+    #             cumulative_target = 0.0
+    #             cumulative_assigned = 0.0
+    #             for j in range(K):
+    #                 cumulative_target += w / K
+    #                 part = cumulative_target - cumulative_assigned
+    #                 trips[j].append((c, part))
+    #                 cumulative_assigned += part
+    #         return trips
+
+    #     new_genotype: list = []
+
+    #     for tour in genotype:
+    #         if not tour:
+    #             continue
+
+    #         # ── Physical limit: K cannot exceed the minimum gold in the gene ───
+    #         # Below 1 unit of gold per trip, splitting no longer makes sense
+    #         # (and for already fractional gold coming from previous calls, it
+    #         # avoids endlessly fragmenting an already minimal trip).
+    #         min_gold = min(w for _, w in tour)
+    #         if min_gold <= 1.0:
+    #             new_genotype.append(tour)
+    #             continue
+
+    #         K_max = min(max_search, int(min_gold))
+    #         if K_max <= 1:
+    #             new_genotype.append(tour)
+    #             continue
+
+    #         # ── f(K) with float gold: perfectly convex for beta > 1 ──
+    #         def f(K: int) -> float:
+    #             return K * gc([(c, w / K) for c, w in tour])
+
+    #         # ── Binary search for the minimum on [1, K_max] ────────────────────
+    #         low, high = 1, K_max
+    #         while low < high:
+    #             mid = (low + high) // 2
+    #             if f(mid) <= f(mid + 1):
+    #                 high = mid
+    #             else:
+    #                 low = mid + 1
+    #         best_K = low
+
+    #         # Check neighbors for robustness on plateaus.
+    #         best_cost_f = f(best_K)
+    #         for K_cand in (best_K - 1, best_K + 1):
+    #             if 1 <= K_cand <= K_max:
+    #                 c = f(K_cand)
+    #                 if c < best_cost_f:
+    #                     best_cost_f = c
+    #                     best_K = K_cand
+
+    #         # ── Build the actual K* trips with an exact sum ─────────────
+    #         if best_K == 1:
+    #             new_genotype.append(tour)
+    #         else:
+    #             new_genotype.extend(make_trips_balanced_exact(tour, best_K))
+
+    #     return new_genotype, self.compute_cost_genotype(new_genotype)
+
+    # # Not used.
+    # def merge_all_possible(self, genotype, max_neighbors=5, k_search=50):
+    #     """
+    #     O(n log n) version per iteration, instead of O(n^2 * k_search).
+
+    #     Bottlenecks fixed compared to the previous version:
+
+    #     1. gene_sets.index(set_b)  ->  O(n) per chiamata, chiamata O(n*k) volte
+    #     FIX: dizionario set_to_indices[frozenset] = deque di indici,
+    #     lookup e pop in O(1).
+
+    #     2. The break after a SINGLE merge forced a full restart of the while
+    #     loop (rebuilding gene_sets, centroids, KDTree to apply one change).
+    #     Fix: apply ALL merge candidates found in a single pass over the
+    #     unique sets, then rebuild only if merges were actually performed.
+
+    #     3. idxs_a/idxs_b were recomputed with an O(n) scan for each merge
+    #     found. Fix: keep them as pre-indexed deques, consumed with popleft()
+    #     in O(1).
+
+    #     4. new_genotype was reconstructed by scanning the entire genotype at
+    #     each accepted merge. Fix: build it once per pass, iterating over the
+    #     collected "keep" indices.
+
+    #     Complexity per pass: O(n log n + n_unique * k_search)
+    #     instead of O(n^2 * k_search) in the worst case of the previous version.
+    #     The number of while passes is typically O(log n) because each pass
+    #     applies ALL possible merges at once, not one at a time.
+    #     """
+    #     from scipy.spatial import KDTree
+    #     import numpy as np
+    #     import networkx as nx
+
+    #     if not hasattr(self, '_node_positions'):
+    #         self._node_positions = nx.get_node_attributes(self.graph, 'pos')
+
+    #     def get_gene_centroid(gene):
+    #         coords = [self._node_positions[c] for c, _ in gene if c in self._node_positions]
+    #         return np.mean(coords, axis=0) if coords else np.array([0.5, 0.5])
+
+    #     genotype = list(genotype)  # copia di lavoro
+
+    #     while True:
+    #         n = len(genotype)
+    #         if n <= 1:
+    #             break
+
+    #         # ── 1. Indicizzazione O(n): frozenset -> deque di indici ─────────
+    #         gene_sets = [frozenset(c for c, _ in g) for g in genotype]
+    #         set_to_indices: dict = defaultdict(deque)
+    #         for idx, gs in enumerate(gene_sets):
+    #             set_to_indices[gs].append(idx)
+
+    #         unique_sets = list(set_to_indices.keys())
+    #         if len(unique_sets) <= 1:
+    #             break
+
+    #         # One representative gene for each unique set (for centroid and cost).
+    #         rep_gene = {gs: genotype[idxs[0]] for gs, idxs in set_to_indices.items()}
+
+    #         # ── 2. Centroidi + KDTree SOLO sui set unici, UNA volta per passata ─
+    #         centroids = np.array([get_gene_centroid(rep_gene[gs]) for gs in unique_sets])
+    #         tree = KDTree(centroids)
+    #         set_to_pos = {gs: i for i, gs in enumerate(unique_sets)}
+
+    #         any_merge_this_pass = False
+    #         keep_indices: list = []          # indici originali da mantenere intatti
+    #         merged_genes: list = []          # nuovi geni prodotti da merge
+
+    #         # ── 3. Scan only the UNIQUE sets (not all n genes!) ────
+    #         for gs in unique_sets:
+    #             idxs = set_to_indices[gs]
+    #             if not idxs:
+    #                 continue  # already fully consumed by a previous merge.
+
+    #             pos_a = set_to_pos[gs]
+    #             k_eff = min(k_search, len(unique_sets))
+    #             _, neighbor_positions = tree.query(centroids[pos_a], k=k_eff)
+    #             if np.isscalar(neighbor_positions):
+    #                 neighbor_positions = [neighbor_positions]
+
+    #             gene_a = rep_gene[gs]
+    #             tested = 0
+    #             merged_here = False
+
+    #             for pos_b in neighbor_positions:
+    #                 set_b = unique_sets[pos_b]
+    #                 if set_b == gs or not gs.isdisjoint(set_b):
+    #                     continue
+    #                 idxs_b = set_to_indices[set_b]
+    #                 if not idxs_b:
+    #                     continue  # already consumed by a previous merge in this pass.
+
+    #                 gene_b = rep_gene[set_b]
+    #                 cost_a = self._gene_cost(gene_a)
+    #                 cost_b = self._gene_cost(gene_b)
+    #                 merged_gene, merged_cost = self.merge_genes(gene_a, gene_b)
+
+    #                 if merged_cost <= cost_a + cost_b:
+    #                     # ── Applica il merge a TUTTE le coppie disponibili ────
+    #                     quanti = min(len(idxs), len(idxs_b))
+    #                     for _ in range(quanti):
+    #                         idxs.popleft()
+    #                         idxs_b.popleft()
+    #                         merged_genes.append(merged_gene)
+    #                     any_merge_this_pass = True
+    #                     merged_here = True
+    #                     break  # passa al prossimo set unico
+
+    #                 tested += 1
+    #                 if tested >= max_neighbors:
+    #                     break
+
+    #             if not merged_here:
+    #                 # Nessun merge trovato per questo set: le sue copie restano intatte
+    #                 keep_indices.extend(idxs)
+    #                 idxs.clear()
+
+    #         # ── 4. Aggiungi le copie residue di set parzialmente fusi ─────────
+    #         # (es. set_a aveva 5 copie, solo 3 fuse: le restanti 2 vanno mantenute)
+    #         for gs in unique_sets:
+    #             keep_indices.extend(set_to_indices[gs])
+
+    #         # ── 5. Costruisci il nuovo genotype in un'unica passata O(n) ─────
+    #         keep_indices.sort()
+    #         new_genotype = [genotype[i] for i in keep_indices] + merged_genes
+    #         genotype = new_genotype
+
+    #         if not any_merge_this_pass:
+    #             break
+
+    #     return genotype, self.compute_cost_genotype(genotype)
+
+    # # Not used.
+    # def hill_climber_optimize(self, genotype, max_iterations=1000):
+    #     """
+    #     Apply mutation to the genotype to optimize it, keeping only improvements.
+    #     """
+
+    #     def merge_matching_copies(current_genotype, set_a, set_b):
+    #         gene_sets = [frozenset(c for c, _ in g) for g in current_genotype]
+
+    #         if set_a == set_b:
+    #             matching_indices = [idx for idx, gs in enumerate(gene_sets) if gs == set_a]
+    #             merged_for_idx = {}
+    #             skip_indices = set()
+
+    #             for left_idx, right_idx in zip(matching_indices[0::2], matching_indices[1::2]):
+    #                 merged_gene, _ = self.merge_genes(current_genotype[left_idx], current_genotype[right_idx])
+    #                 merged_for_idx[left_idx] = merged_gene
+    #                 skip_indices.add(right_idx)
+
+    #             if not merged_for_idx:
+    #                 return current_genotype
+
+    #             rebuilt = []
+    #             for idx in range(len(current_genotype)):
+    #                 if idx in merged_for_idx:
+    #                     rebuilt.append(merged_for_idx[idx])
+    #                 elif idx in skip_indices:
+    #                     continue
+    #                 else:
+    #                     rebuilt.append(current_genotype[idx])
+
+    #             return rebuilt
+
+    #         idxs_a = [idx for idx, gs in enumerate(gene_sets) if gs == set_a]
+    #         idxs_b = [idx for idx, gs in enumerate(gene_sets) if gs == set_b]
+
+    #         quanti_merge = min(len(idxs_a), len(idxs_b))
+    #         if quanti_merge == 0:
+    #             return current_genotype
+
+    #         merged_for_a = {}
+    #         skip_indices = set()
+
+    #         for k in range(quanti_merge):
+    #             a_idx = idxs_a[k]
+    #             b_idx = idxs_b[k]
+    #             merged_gene, _ = self.merge_genes(current_genotype[a_idx], current_genotype[b_idx])
+    #             merged_for_a[a_idx] = merged_gene
+    #             skip_indices.add(b_idx)
+
+    #         rebuilt = []
+    #         for idx in range(len(current_genotype)):
+    #             if idx in merged_for_a:
+    #                 rebuilt.append(merged_for_a[idx])
+    #             elif idx in skip_indices:
+    #                 continue
+    #             else:
+    #                 rebuilt.append(current_genotype[idx])
+
+    #         return rebuilt
+        
+    #     iterations = 0
+    #     cost= self.compute_cost_genotype(genotype)
+    #     while iterations < max_iterations:
+            
+    #         # Select two random genes and try to merge them; if the cost improves, accept the change.
+    #         gene1, gene2 = random.sample(genotype, 2)
+    #         #print(f"[HILL_CLIMBER] Iteration {iterations} - Testing merge between gene {gene1} and gene {gene2}")
+    #         cost1 = self._gene_cost(gene1)
+    #         cost2 = self._gene_cost(gene2)
+    #         set1 = frozenset(c for c, _ in gene1)
+    #         set2 = frozenset(c for c, _ in gene2)
+    #         merged_gene, merged_cost = self.merge_genes(gene1, gene2)
+    #         if merged_cost <= cost1+cost2:
+    #             #print(f"[HILL_CLIMBER] Merged gene {gene1} and {gene2} into {merged_gene} with cost {merged_cost:.2f} (improvement from {cost1+cost2:.2f})")
+    #             genotype.remove(gene1)
+    #             genotype.remove(gene2)
+    #             genotype.append(merged_gene)
+    #             genotype[:] = merge_matching_copies(genotype, set1, set2)
+    #             new_cost = self.compute_cost_genotype(genotype)
+    #             cost = new_cost
+    #             # In addition to merging the two selected genes, also try to merge all identical copies of gene1 and gene2 to maximize the improvement.
+    #             # This is important when there are many identical copies of gene1 and gene2.
+
+            
+    #         iterations += 1
+    #     return genotype, self.compute_cost_genotype(genotype)
+
+    # # not used
+    # def hill_climber_classic(self, genotype, max_iterations=1000):
+    #     """
+    #     Hill climber performs split-gene or merge-gene moves to improve the solution.
+    #     """
+    #     cost= self.compute_cost_genotype(genotype)
+    #     for i in range(max_iterations):
+
+    #         new_genotype, new_cost = self.mutation(genotype)
+    #         if new_cost<cost:
+    #             print(f"\n[DEBUG] find convenient mutation iteration {i}")
+    #             genotype=new_genotype
+    #             cost= new_cost
+
+    #     return genotype, cost

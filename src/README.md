@@ -152,10 +152,10 @@ This balances exploration and exploitation:
 
 ```python
 from Problem import Problem
-from src.GA_solver_2 import GA_Solver
+from src.Solver import Solver
 
 problem = Problem(num_cities=12, alpha=1.0, beta=1.5, density=0.7, seed=7)
-solver = GA_Solver(problem)
+solver = Solver(problem)
 
 phenotype, cost = solver.solution(fast=True)
 print(cost)
