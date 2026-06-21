@@ -1,5 +1,8 @@
 
 import numpy as np
+import networkx as nx
+import Problem
+from typing import List, Tuple
 
 def compute_ga_params(n_cities, beta, alpha):
     """Dynamically compute GA parameters based on problem complexity."""
@@ -50,25 +53,76 @@ def compute_ga_params(n_cities, beta, alpha):
     return pop_size, generations, offprint
 
 
-def check_path(problem, path):
-    """Check if a solution is valid and compute its cost."""
-    total_cost = 0
-    current_weight = 0
-    is_correct=True
-    total_gold= sum(problem.graph.nodes[ n ]['gold'] for n in problem.graph.nodes if n !=0 )
+def check_feasibility_without_start_depot(
+     problem: Problem,
+     solution: List[Tuple[int, float]],
+) -> bool:
+     """
+     Checks if a solution is feasible:
+     1. Each step must be between adjacent cities
+     2. All gold from all cities must be collected (at least once)
 
-    for i in range(len(path)-1):
-        u, v = path[i][0], path[i+1][0]
-        d= problem.graph[u][v]['dist']
-        total_cost += d + (problem.alpha * d * current_weight) ** problem.beta
-        # Aggiorna il peso se si raccoglie oro
-        if v != 0:  # Non raccogliere oro al deposito
-            current_weight += path[i+1][1]
-            total_gold -= path[i+1][1]
-                
-        else:
-            current_weight = 0  # Svuota il peso al deposito
-    is_correct = abs(total_gold) < 1e-6  # Tolleranza per errori float
-    
-    return is_correct, total_cost
+     :param problem: Problem instance
+     :param solution: List of (city, gold_picked)
+     :return: True if feasible, False otherwise
+     """
+     graph = problem.graph
+     gold_at = nx.get_node_attributes(graph, "gold")
 
+     # Track collected gold per city
+     gold_collected = {}
+     prev_city = 0  # Start from depot
+
+     current_weight = 0
+     i=0
+
+     for city, gold in solution:
+         # Check adjacency
+         if not graph.has_edge(prev_city, city):
+             print(f"❌ ADIACENCY Feasibility failed: no edge between {prev_city} and {city} i={i}")
+             print(f"Path segment: {prev_city} -> {city}")
+             print( solution)
+             return False
+
+         # Track collected gold
+         if gold > 0:
+             gold_collected[city] = gold_collected.get(city, 0.0) + gold
+
+         # Update current weight
+         current_weight += gold
+         if city == 0:
+             current_weight = 0
+
+         prev_city = city
+
+     # Verify all gold was collected
+     for city in graph.nodes():
+         if city == 0:  # Depot has no gold
+             continue
+         expected_gold = gold_at.get(city, 0.0)
+         collected_gold = gold_collected.get(city, 0.0)
+
+         if abs(expected_gold - collected_gold) > 1e-4:  # Float tolerance
+             print(f"❌ Feasibility failed: city {city} i={i} has{expected_gold:.2f} gold, collected {collected_gold:.2f}")
+             return False
+         i += 1
+
+     return True
+
+
+def compute_cost(problem, path):
+    if not path:
+        return 0.0
+    alpha = problem.alpha
+    beta  = problem.beta
+    total = 0.0
+    start, current_gold = path[0]
+    g = problem.graph
+    for city, gold in path[1:]:
+        if not g.has_edge(start, city):
+            return float("inf")
+        d = g[start][city]['dist']
+        total += d + (alpha * d * current_gold) ** beta
+        current_gold = 0.0 if city == 0 else current_gold + gold
+        start = city
+    return total

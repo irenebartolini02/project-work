@@ -119,9 +119,9 @@ class Solver:
         for gene in genotype:
             total += gc(gene)
 
-        first_city = genotype[0][0][0]
-        start_cost = float(self.dist_matrix[0, self.node_to_idx[first_city]])
-        return total - start_cost
+        # first_city = genotype[0][0][0]
+        # start_cost = float(self.dist_matrix[0, self.node_to_idx[first_city]])
+        return total 
 
     # ──────────────────────────────────────────────────────────────────────
     #  FEASIBILITY
@@ -186,20 +186,63 @@ class Solver:
 
         n2i = self.node_to_idx
         fp  = self.full_paths
+        phenotype.append((0, 0))  # Start from depot
 
         for gene in genotype:
             start = 0
+           
             for city, gold in gene:
+                
                 for c in fp[n2i[start]][n2i[city]][1:-1]:
                     phenotype.append((c, 0))
+                
                 phenotype.append((city, gold))
                 start = city
+            # Ritorno al deposito alla fine del gene
             for c in fp[n2i[start]][0][1:]:
                 phenotype.append((c, 0))
 
-        first_city = genotype[0][0]          # (city, gold) tuple
-        idx = phenotype.index(first_city)
-        return phenotype[idx:]
+        # first_city = genotype[0][0]          # (city, gold) tuple
+        # idx = phenotype.index(first_city)
+        return phenotype
+    
+    # def weighted_genotype_to_phenotype(self, genotype: list) -> list:
+    #     phenotype = []
+    #     if not genotype:
+    #         return phenotype
+
+    #     n2i = self.node_to_idx
+    #     fp  = self.full_paths
+
+    #     for gene in genotype:
+    #         start = 0
+    #         total_gold=0
+    #         # depot -> first_city
+    #         city, gold= gene[0]
+    #         no_gold_trip= fp[ n2i[start] ][ n2i[city] ]
+    #         phenotype.extend( (c, 0) for c in no_gold_trip[1:-1] )
+    #         phenotype.append((city, gold))
+
+    #         total_gold += gold
+    #         start = city
+    #         for city, gold in gene[1:]:
+    #             # weighted trip from previous city to current city
+    #             path = self.compute_best_trip_Weighted_Dikjstra(
+    #                 weight=total_gold, start=start, end=city
+    #             )
+    #             phenotype.extend( (c, 0) for c in path[1:-1] )
+    #             phenotype.append((city, gold))
+    #             total_gold += gold
+    #             start = city
+    #         # weighted trip from last city back to depot
+    #         path = self.compute_best_trip_Weighted_Dikjstra(
+    #             weight=total_gold, start=start, end=0
+    #         )
+    #         phenotype.extend( (c, 0) for c in path[1:] )
+
+    #     first_city = genotype[0][0]          # (city, gold) tuple
+    #     idx = phenotype.index(first_city)
+    #     return phenotype[idx:]
 
     def compute_cost_phenotype(self, phenotype: list) -> float:
         if not phenotype:
@@ -217,6 +260,8 @@ class Solver:
             current_gold = 0.0 if city == 0 else current_gold + gold
             start = city
         return total
+    
+    
 
     # ──────────────────────────────────────────────────────────────────────
     #  GREEDY DECODER
@@ -427,20 +472,18 @@ class Solver:
         """
         When the cost depends only on the distance and not on the gold carried, we can use the precomputed shortest paths.
         """
-        cities = [city for city in self.cities_to_visit if self.node_gold.get(city, 0.0) > 0]
+        cities = [city for city in self.cities_to_visit if self.node_gold.get(city, 0.0) > 0 and city != 0]
         # Order the cities by increasing distance from the previous one.
 
-        start= 0
-        next_city= min(cities, key=lambda city: self.dist_matrix[self.node_to_idx[start]][self.node_to_idx[city]])
-
-        cities.remove(next_city)
-        genotype= [(next_city, self.node_gold[next_city])]
+        next_city= 0
+        genotype= []
 
         while cities:
             current_city = next_city
             next_city = min(cities, key=lambda c: self.dist_matrix[current_city][c])
             genotype.append((next_city, self.node_gold[next_city]))
             cities.remove(next_city)
+
 
         return [genotype], self._gene_cost(genotype)
 
@@ -656,6 +699,24 @@ class Solver:
                 winner_k = best_k
 
         return winner_k
+    
+
+
+    def compute_best_trip_Weighted_Dikjstra(self, weight, start, end):
+        """
+        Compute the best trip from start to end using Dijkstra's algorithm with a weight that depends on the gold carried.
+        The weight is applied to the return leg (city -> depot) to account for the cost of carrying gold.
+        """
+        def weight_func(u, v, data):
+            d = data['dist']
+            return d + (self.alpha * d * weight) ** self.beta
+
+        length, path = nx.single_source_dijkstra(
+            self.graph, start, target=end, weight=weight_func
+        )
+        return path
+
+    #
 
     def _generate_solution_with_adaptive_split(self, max_search=1000):
         """
@@ -663,7 +724,7 @@ class Solver:
         Returns the full phenotype and its cost.
 
         """
-        phenotype = []
+        phenotype = [(0,0)]
         
         for city in self.cities_to_visit:
             total_gold = self.graph.nodes[city]['gold']
@@ -674,10 +735,10 @@ class Solver:
             
             best_K, best_cost, best_path = self._adaptive_split_with_refinement(city, total_gold, max_search)
            # print(f"[DEBUG] City {city}: total_gold={total_gold}, best_K={best_K}, best_cost={best_cost:.2f}, best_return_path={best_path}")
+            
             for _ in range(best_K):
-                if phenotype:
-                    # Connect the current depot to the current city without duplicating depot/city.
-                    phenotype.extend((c, 0) for c in initial_path[1:-1])
+                
+                phenotype.extend((c, 0) for c in initial_path[1:-1])
                 phenotype.append((city, total_gold / best_K))
                 phenotype.extend([(c, 0) for c in best_path[1:]])  # Add the optimized return path, skipping the city itself.
                 
@@ -849,13 +910,20 @@ class Solver:
         if self.alpha == 0 or self.beta == 0:
             # In these two cases the cost is linear and depends only on distance.
             # It is convenient to perform a single tour (only one gene).
-            tour = [(city, self.node_gold.get(city, 0.0)) for city in self.cities_to_visit if self.node_gold.get(city, 0.0) > 0]
+            tour = [(city, self.node_gold.get(city, 0.0)) for city in self.cities_to_visit if self.node_gold.get(city, 0.0) > 0 and city != 0]
             best_path, best_cost = self.optimize_gene(tour)
+
+            # s_path, s_cost = self._shortest_path()
+            # if s_cost < best_cost:
+            #     best_path, best_cost = s_path[0], s_cost
             phenotype= self.genotype_to_phenotype([best_path])
             return  phenotype, best_cost
         
         if self.beta > 1.0: 
             phenotype, best_cost = self._generate_solution_with_adaptive_split(max_search=1000)
+            # when density is low maybe it's better to aggregate 
+            # per problemi piccolo n_city< 20
+            
             return  phenotype, best_cost
         
         n_cities = len(self.cities_to_visit)
@@ -1108,6 +1176,245 @@ class Solver:
     #             break
 
     #     return genotype, self.compute_cost_genotype(genotype)
+
+    # def hill_climber_optimize(self, phenotype, max_iterations=1000):
+    #     """
+    #     Apply mutation to the genotype to optimize it, keeping only improvements.
+    #     Versione corretta con modifiche minime alla struttura originale.
+    #     """
+    #     import random  # Assicuriamoci che random sia importato
+
+    #     def merge_complete_genes(gene1, gene2):
+    #         list_city_1 = list(c for c, _ in gene1)
+    #         list_city_2 = list(c for c, _ in gene2)
+            
+    #         # Usiamo le liste per evitare i problemi di indicizzazione dei set
+    #         relevant_cities_1 = [c for c, g in gene1 if g > 0]
+    #         relevant_cities_2 = [c for c, g in gene2 if g > 0]
+            
+    #         # Usiamo l'ultimo elemento se esiste, senza alterare la lista originale
+    #         last_rel_1 = relevant_cities_1[-1] if relevant_cities_1 else (list_city_1[-1] if list_city_1 else 0)
+    #         last_rel_2 = relevant_cities_2[-1] if relevant_cities_2 else (list_city_2[-1] if list_city_2 else 0)
+            
+    #         # Trova l'indice corretto per lo slicing
+    #         idx_1 = list_city_1.index(last_rel_1) + 1 if last_rel_1 in list_city_1 else 0
+    #         idx_2 = list_city_2.index(last_rel_2) + 1 if last_rel_2 in list_city_2 else 0
+            
+    #         trip_to_relevant_city_1 = list_city_1[:idx_1]
+    #         trip_to_relevant_city_2 = list_city_2[:idx_2]
+
+    #         # Convertiamo temporaneamente in set SOLO per usare .issubset()
+    #         set_trip_1 = set(trip_to_relevant_city_1)
+    #         set_trip_2 = set(trip_to_relevant_city_2)
+    #         set_city_1 = set(list_city_1)
+    #         set_city_2 = set(list_city_2)
+
+    #         if list_city_1 == list_city_2:
+    #             merged_dict = {}
+    #             print("Merging identical genes")
+    #             for c, g in gene1 + gene2:
+    #                 merged_dict[c] = merged_dict.get(c, 0) + g
+    #             merged_gene = []
+    #             for c, _ in gene1:
+    #                 merged_gene.append((c, merged_dict[c]))
+
+    #         elif set_trip_1.issubset(set_trip_2) or set_trip_2.issubset(set_trip_1):
+    #             print("Merging genes with overlapping trips")
+    #             trip_to_relevant = trip_to_relevant_city_1 if len(trip_to_relevant_city_1) > len(trip_to_relevant_city_2) else trip_to_relevant_city_2
+    #             merged_dict = {}
+    #             for c, g in gene1 + gene2:
+    #                 if c in trip_to_relevant:
+    #                     merged_dict[c] = merged_dict.get(c, 0) + g
+    #             merged_gene = []
+    #             gold = 0
+    #             for c in trip_to_relevant:
+    #                 merged_gene.append((c, merged_dict[c]))
+    #                 gold += merged_dict[c]
+    #                 merged_dict[c] = 0  # Reset gold after collection
+                
+    #             # CORREZIONE: Usiamo l'ultimo elemento senza fare .pop() per non mutilare la lista
+    #             last_node = trip_to_relevant[-1] if trip_to_relevant else 0
+    #             trip_to_depot = self.compute_best_trip_Weighted_Dikjstra(weight=gold, start=last_node, end=0)
+    #             merged_gene.extend([ (c, 0) for c in trip_to_depot[1:] ])  
+
+    #         else:
+    #             print("Merging genes with disjoint trips")
+    #             # CORREZIONE: Convertiamo l'unione in una lista ordinata stasera per poterla indicizzare
+    #             set_relevant = set(relevant_cities_1).union(set(relevant_cities_2))
+    #             relevant_cities = sorted(list(set_relevant))
+                
+    #             if not relevant_cities:
+    #                 return gene1, self.compute_cost_phenotype(gene1)
+                    
+    #             merged_dict = {}
+    #             for c, g in gene1 + gene2:
+    #                 if c in set_relevant:
+    #                     merged_dict[c] = merged_dict.get(c, 0) + g
+                
+    #             # CORREZIONE: Gestione sicura degli indici sulla lista ora indicizzabile
+    #             first_city = relevant_cities[0]
+    #             trip_to_relevant = self.full_paths[0][self.node_to_idx[first_city]]
+    #             merged_gene = [(c, 0) for c in trip_to_relevant[:-1]] 
+    #             merged_gene.append((first_city, merged_dict[first_city])) 
+    #             gold = merged_dict[first_city]
+    #             current_city = first_city
+                
+    #             for c in relevant_cities[1:]:
+    #                 trip_to_relevant = self.compute_best_trip_Weighted_Dikjstra(weight=gold, start=current_city, end=c)
+    #                 merged_gene.extend([(c_node, 0) for c_node in trip_to_relevant[1:-1]])  
+    #                 merged_gene.append((c, merged_dict[c])) 
+    #                 gold += merged_dict[c]
+    #                 current_city = c
+    #             trip_to_depot = self.compute_best_trip_Weighted_Dikjstra(weight=gold, start=current_city, end=0)
+    #             merged_gene.extend([(c, 0) for c in trip_to_depot[1:]])  
+                
+    #         return merged_gene, self.compute_cost_phenotype(merged_gene)
+       
+    #     def merge_matching_copies(current_genotype, set_a, set_b):
+    #         gene_sets = [frozenset(c for c, _ in g) for g in current_genotype]
+
+    #         if set_a == set_b:
+    #             matching_indices = [idx for idx, gs in enumerate(gene_sets) if gs == set_a]
+    #             merged_for_idx = {}
+    #             skip_indices = set()
+
+    #             for left_idx, right_idx in zip(matching_indices[0::2], matching_indices[1::2]):
+    #                 merged_gene, _ = merge_complete_genes(current_genotype[left_idx], current_genotype[right_idx])
+    #                 merged_for_idx[left_idx] = merged_gene
+    #                 skip_indices.add(right_idx)
+
+    #             if not merged_for_idx:
+    #                 return current_genotype
+
+    #             rebuilt = []
+    #             for idx in range(len(current_genotype)):
+    #                 if idx in merged_for_idx:
+    #                     rebuilt.append(merged_for_idx[idx])
+    #                 elif idx in skip_indices:
+    #                     continue
+    #                 else:
+    #                     rebuilt.append(current_genotype[idx])
+
+    #             return rebuilt
+
+    #         idxs_a = [idx for idx, gs in enumerate(gene_sets) if gs == set_a]
+    #         idxs_b = [idx for idx, gs in enumerate(gene_sets) if gs == set_b]
+
+    #         quanti_merge = min(len(idxs_a), len(idxs_b))
+    #         if quanti_merge == 0:
+    #             return current_genotype
+
+    #         merged_for_a = {}
+    #         skip_indices = set()
+
+    #         for k in range(quanti_merge):
+    #             a_idx = idxs_a[k]
+    #             b_idx = idxs_b[k]
+    #             merged_gene, _ = merge_complete_genes(current_genotype[a_idx], current_genotype[b_idx])
+    #             merged_for_a[a_idx] = merged_gene
+    #             skip_indices.add(b_idx)
+
+    #         rebuilt = []
+    #         for idx in range(len(current_genotype)):
+    #             if idx in merged_for_a:
+    #                 rebuilt.append(merged_for_a[idx])
+    #             elif idx in skip_indices:
+    #                 continue
+    #             else:
+    #                 rebuilt.append(current_genotype[idx])
+
+    #         return rebuilt
+        
+    #     iterations = 0
+    #     cost = self.compute_cost_phenotype(phenotype)
+    #     costume_genotype = []
+    #     gene = []
+    #     for city, gold in phenotype:
+    #         if city == 0 and gene:
+    #             gene.append((city, gold))  
+    #             costume_genotype.append(gene)
+    #             gene = []
+    #         else:
+    #             if not gene and city !=0:
+    #                 # è il primo nodo e dobbiamo aggiungere la strada dal deposito al primo nodo
+    #                 path_to_city = self.full_paths[self.node_to_idx[0]][self.node_to_idx[city]]
+    #                 gene.extend([ (c, 0) for c in path_to_city[:-1] ])  # Start with depot if we are starting a new gene
+    #             gene.append((city, gold))
+
+    #     while iterations < max_iterations:
+    #         # CORREZIONE: Se il genotipo si riduce a meno di 2 elementi, usciamo per evitare il crash di random.sample
+    #         if len(costume_genotype) < 2:
+    #             break
+
+    #         gene1, gene2 = random.sample(costume_genotype, 2)
+    #         cost1 = self.compute_cost_phenotype(gene1)
+    #         cost2 = self.compute_cost_phenotype(gene2)
+    #         # print(f"[DEBUG] Iteration {iterations}: Merging genes with costs {cost1:.2f} and {cost2:.2f}")
+    #         # print(f"[DEBUG] Gene1: {gene1}")
+    #         # print(f"[DEBUG] Gene2: {gene2}")
+
+    #         set1 = frozenset(c for c, _ in gene1)
+    #         set2 = frozenset(c for c, _ in gene2)
+
+    #         merged_gene, merged_cost = merge_complete_genes(gene1, gene2)
+    #         #print(f"[DEBUG] Merged gene: {merged_gene} with cost {merged_cost:.2f} original cost {cost1 + cost2:.2f}    ")
+    #         if merged_cost < cost1 + cost2:
+    #             print(f"[DEBUG] Merging genes improved cost: {cost1 + cost2:.2f} -> {merged_cost:.2f}")
+    #             costume_genotype.remove(gene1)
+    #             costume_genotype.remove(gene2)
+    #             costume_genotype.append(merged_gene)
+    #             costume_genotype[:] = merge_matching_copies(costume_genotype, set1, set2)
+                
+    #             # CORREZIONE COMPORTAMENTALE: Ricalcolo del costo globale senza usare il vecchio .flatten() errato
+    #             flat_list = [node for sub_gene in costume_genotype for node in sub_gene]
+    #             cost = self.compute_cost_phenotype(flat_list)
+    #         else: 
+    #             # il merge non è risultato vantaggioso ma magari se dividessimo il numero di oro raccolto per ogni città sarebbe migliore,
+                
+    #             K= 2
+    #             previous_cost = merged_cost
+    #             improved= True
+
+    #             while improved:
+    #                 improved= False
+    #                 gene_split = []
+    #                 for city, gold in merged_gene:
+    #                     gene_split.append((city, gold / K))
+    #                 cost_spitted = self.compute_cost_phenotype(gene_split)
+    #                 if cost_spitted*K < previous_cost:
+
+    #                     print(f"[DEBUG] Splitting merged gene improved cost: {merged_cost:.2f} -> {cost_spitted*K:.2f} original cost {cost1 + cost2:.2f}    ")
+    #                     improved = True
+    #                     previous_cost = cost_spitted*K
+    #                     K +=1
+    #                 else:
+    #                     print(f"[DEBUG] No further improvement by splitting at K={K}. Previous cost: {previous_cost:.2f}, Current cost: {cost_spitted*K:.2f}")
+    #             K-=1    
+    #             if previous_cost < cost1 + cost2:
+    #                 gene_split = []
+    #                 for city, gold in merged_gene:
+    #                     gene_split.append((city, gold / K))
+    #                 costume_genotype.remove(gene1)
+    #                 costume_genotype.remove(gene2)
+    #                 for _ in range(K):
+    #                     costume_genotype.append(gene_split)
+    #                # costume_genotype[:] = merge_matching_copies(costume_genotype, set1, set2, )
+                    
+    #                 # CORREZIONE COMPORTAMENTALE: Ricalcolo del costo globale senza usare il vecchio .flatten() errato
+    #                 flat_list = [node for sub_gene in costume_genotype for node in sub_gene]
+    #                 cost = self.compute_cost_phenotype(flat_list)
+                
+                
+    #         iterations += 1
+
+    #     # CORREZIONE FINALE: Sostituito .flatten() con una list comprehension classica di Python
+    #     final_flat_phenotype = []
+    #     for gene in costume_genotype:
+    #         final_flat_phenotype.extend(gene[1:])  # Exclude the last depot node to avoid duplication
+    #     # escludi le prime città con costo 0 (che sono solo il percorso dal deposito alla prima città)
+    #     while final_flat_phenotype and final_flat_phenotype[0][1] == 0:
+    #         final_flat_phenotype.pop(0)
+    #     return final_flat_phenotype, self.compute_cost_phenotype(final_flat_phenotype)
 
     # # Not used.
     # def hill_climber_optimize(self, genotype, max_iterations=1000):
