@@ -2,7 +2,7 @@
 
 This folder contains the solver implementation used in the project.
 The main entry point is [Solver.py](Solver.py), which defines the `Solver` class.
-[utils.py](utils.py) : 
+[utils.py](utils.py) : where there are some useful functions like: `compute_cost`, `check_feasibility_without_start_depot`
 
 ## Overview
 

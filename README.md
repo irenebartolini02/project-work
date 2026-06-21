@@ -30,13 +30,3 @@ The thief can return to the depot at any point to unload gold (resetting the wei
 
 ### Collaboration
 In order to produce this solution I share ideas with 3 collegues: Davide Carletto (s339425),  Michele Carena (349483), Alessandro Benvenuti (343748). 
-
-
-# Cose da fare: 
- 
-Scrivere il Readme bene spiegando le diverse soluzioni 
-Pulire la classe dalle funzioni non utilizzate o vecchie 
-
-NOTA BENE: nel caso beta > 1 uso solo i full_path che partono da zero così c'è troppo overhead.
-
-Rurannare tutte le compinazioni 

@@ -206,44 +206,7 @@ class Solver:
         # idx = phenotype.index(first_city)
         return phenotype
     
-    # def weighted_genotype_to_phenotype(self, genotype: list) -> list:
-    #     phenotype = []
-    #     if not genotype:
-    #         return phenotype
-
-    #     n2i = self.node_to_idx
-    #     fp  = self.full_paths
-
-    #     for gene in genotype:
-    #         start = 0
-    #         total_gold=0
-    #         # depot -> first_city
-    #         city, gold= gene[0]
-    #         no_gold_trip= fp[ n2i[start] ][ n2i[city] ]
-    #         phenotype.extend( (c, 0) for c in no_gold_trip[1:-1] )
-    #         phenotype.append((city, gold))
-
-    #         total_gold += gold
-    #         start = city
-    #         for city, gold in gene[1:]:
-    #             # weighted trip from previous city to current city
-    #             path = self.compute_best_trip_Weighted_Dikjstra(
-    #                 weight=total_gold, start=start, end=city
-    #             )
-    #             phenotype.extend( (c, 0) for c in path[1:-1] )
-    #             phenotype.append((city, gold))
-    #             total_gold += gold
-    #             start = city
-    #         # weighted trip from last city back to depot
-    #         path = self.compute_best_trip_Weighted_Dikjstra(
-    #             weight=total_gold, start=start, end=0
-    #         )
-    #         phenotype.extend( (c, 0) for c in path[1:] )
-
-    #     first_city = genotype[0][0]          # (city, gold) tuple
-    #     idx = phenotype.index(first_city)
-    #     return phenotype[idx:]
-
+   
     def compute_cost_phenotype(self, phenotype: list) -> float:
         if not phenotype:
             return 0.0
